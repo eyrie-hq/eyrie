@@ -108,9 +108,9 @@ export function writeMcpSettings(file: string, name: string, entry: McpServerEnt
 }
 
 /** What the install dialog tells the user about reaching `eyrie` from a terminal. */
-export function pathHint(binDir: string, platform: NodeJS.Platform = process.platform): string {
+export function pathHint(binDir: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
   if (platform === 'win32') return `Use it as ${paths(platform).join(binDir, 'eyrie.exe')}, or add ${binDir} to your user PATH to run eyrie anywhere.`;
-  const home = process.env.HOME ?? homedir();
+  const home = env.HOME ?? homedir();
   const shown = home && binDir.startsWith(home + '/') ? `~/${binDir.slice(home.length + 1)}` : binDir;
   return `Use it as ${shown}/eyrie, or add this to your shell profile to run eyrie anywhere:\n\nexport PATH="${shown}:$PATH"`;
 }

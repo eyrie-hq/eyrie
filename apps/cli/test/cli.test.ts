@@ -44,7 +44,8 @@ async function mcpCall(child: ReturnType<typeof spawn>, id: number, method: stri
 describe('@eyrie-hq/cli', () => {
   beforeAll(async () => {
     if (!existsSync(join(repoRoot, 'apps', 'web', 'dist', 'index.html'))) {
-      execFileSync('pnpm', ['--filter', '@eyrie/web', 'build'], { cwd: repoRoot, stdio: 'inherit' });
+      // Windows resolves pnpm to a .cmd shim only through the shell.
+      execFileSync('pnpm', ['--filter', '@eyrie/web', 'build'], { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' });
     }
     ({ dist } = await buildCli());
   }, 300_000);

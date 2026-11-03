@@ -25,14 +25,20 @@ describe('resolveAskBackend', () => {
   it('builds the picked backend, even with no server default', () => {
     const names: [pick: string, built: string][] = [
       ['claude', 'claude-code'],
-      ['codex', 'codex'],
       ['muse', 'muse'],
       ['openai', 'openai'],
     ];
     for (const [pick, built] of names) {
       expect(resolveAskBackend(null, pick)?.name).toBe(built);
     }
-    expect(resolveAskBackend(server, 'codex')).not.toBe(server);
+    expect(resolveAskBackend(server, 'claude')).not.toBe(server);
+  });
+
+  // Codex only runs where Eyrie can sandbox it, and says so when it cannot:
+  // the pick is refused with that reason rather than answered.
+  it('picks Codex on macOS, and refuses it elsewhere with the reason', () => {
+    if (process.platform === 'darwin') expect(resolveAskBackend(null, 'codex')?.name).toBe('codex');
+    else expect(() => resolveAskBackend(null, 'codex')).toThrow('needs macOS');
   });
 
   it('refuses unknown or mistyped picks', () => {

@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   bundledEyrie,
   cursorSettingsPath,
+  eyrieFile,
   eyrieForConnect,
   geminiSettingsPath,
   installCli,
@@ -40,19 +41,23 @@ describe('cli-setup', () => {
     expect(userBinDir('win32', { USERPROFILE: 'C:\\U', APPDATA: 'C:\\U\\AppData\\Roaming' })).toBe('C:\\U\\AppData\\Roaming\\Eyrie\\bin');
   });
 
+  // This one touches the real filesystem, so it runs on the real platform:
+  // the per-platform layout is asserted as strings above.
   it('prefers the installed command and falls back to the bundled one', () => {
+    const platform = process.platform;
     const resources = join(dir, 'resources');
     const home = join(dir, 'home');
-    const env = { HOME: home };
+    const env = { HOME: home, USERPROFILE: home, APPDATA: join(home, 'AppData', 'Roaming') };
+    const name = eyrieFile(platform);
     mkdirSync(join(resources, 'cli'), { recursive: true });
-    writeFileSync(join(resources, 'cli', 'eyrie'), 'bundled');
-    expect(bundledEyrie(resources, 'darwin')).toBe(join(resources, 'cli', 'eyrie'));
-    expect(installedEyrie('darwin', env)).toBeNull();
-    expect(eyrieForConnect(resources, 'darwin', env)).toBe(join(resources, 'cli', 'eyrie'));
-    const bin = installCli(resources, 'darwin', env);
-    expect(bin).toBe(join(home, '.eyrie', 'bin', 'eyrie'));
+    writeFileSync(join(resources, 'cli', name), 'bundled');
+    expect(bundledEyrie(resources, platform)).toBe(join(resources, 'cli', name));
+    expect(installedEyrie(platform, env)).toBeNull();
+    expect(eyrieForConnect(resources, platform, env)).toBe(join(resources, 'cli', name));
+    const bin = installCli(resources, platform, env);
+    expect(bin).toBe(join(userBinDir(platform, env), name));
     expect(readFileSync(bin, 'utf8')).toBe('bundled');
-    expect(eyrieForConnect(resources, 'darwin', env)).toBe(bin);
+    expect(eyrieForConnect(resources, platform, env)).toBe(bin);
   });
 
   it('refuses to install when the app was built without the command', () => {
@@ -80,9 +85,11 @@ describe('cli-setup', () => {
   });
 
   it('tells the user how to reach the installed command', () => {
-    const home = process.env.HOME ?? '';
-    expect(pathHint(join(home, '.eyrie', 'bin'), 'darwin')).toContain('~/.eyrie/bin');
-    expect(pathHint(join(home, '.eyrie', 'bin'), 'darwin')).toContain('export PATH=');
+    const env = { HOME: '/Users/u' };
+    expect(pathHint('/Users/u/.eyrie/bin', 'darwin', env)).toContain('~/.eyrie/bin');
+    expect(pathHint('/Users/u/.eyrie/bin', 'darwin', env)).toContain('export PATH=');
+    // A folder outside the home folder keeps its full path.
+    expect(pathHint('/opt/eyrie/bin', 'darwin', env)).toContain('/opt/eyrie/bin');
     expect(pathHint('C:\\U\\bin', 'win32')).toContain('user PATH');
   });
 });

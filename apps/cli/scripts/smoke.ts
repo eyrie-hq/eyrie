@@ -16,7 +16,9 @@ import { cliPaths } from './paths.js';
 
 const { cliDir, repoRoot } = cliPaths(import.meta.url);
 
-const args = process.argv.slice(2);
+// `pnpm --filter @eyrie-hq/cli smoke -- --tarball x` forwards a literal `--`;
+// drop it, or it is taken as the repository to serve.
+const args = process.argv.slice(2).filter((a) => a !== '--');
 const tarballAt = args.indexOf('--tarball');
 const tarball = tarballAt === -1 ? null : args[tarballAt + 1]!;
 const rest = args.filter((_, i) => i !== tarballAt && i !== tarballAt + 1);
