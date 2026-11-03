@@ -38,6 +38,8 @@ export interface Project {
   error?: string;
   /** The AI backend that notes this project's commits (`claude`), when the user turned it on. */
   ai?: string;
+  /** When the app last offered to tell this project's coding agents about Eyrie (epoch ms). Asked once, after the first map. */
+  agentsPromptedAt?: number;
 }
 
 interface StoredList {
@@ -124,6 +126,11 @@ export class ProjectStore {
   /** Turns AI notes on (a backend name) or off (undefined) for a project. */
   setAi(id: string, ai: string | undefined): void {
     this.patch(id, { ai });
+  }
+
+  /** Records that the Connect-agents prompt was shown; it is asked once per project. */
+  markAgentsPrompted(id: string, now = Date.now()): void {
+    this.patch(id, { agentsPromptedAt: now });
   }
 
   recordError(id: string, message: string): void {

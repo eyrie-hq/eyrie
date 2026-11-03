@@ -38,8 +38,9 @@ const config: ForgeConfig = {
     icon: 'assets/icon',
     // Read from disk at run time, so they ship next to the app rather than inside the bundle.
     // `pnpm resources` (scripts/prepare-resources.ts) fills these folders, and copies the
-    // icon the window shows on Linux.
-    extraResource: ['resources/web', 'resources/grammars', 'resources/icon.png'],
+    // icon the window shows on Linux. resources/cli is the single-executable `eyrie`
+    // command with its grammars and web UI, for coding agents.
+    extraResource: ['resources/web', 'resources/grammars', 'resources/icon.png', 'resources/cli'],
     // Not notarized, so signed ad hoc: without it the bundle keeps Electron's own signature,
     // which packaging breaks, and macOS calls a downloaded copy damaged. With it, the first
     // launch is the usual System Settings → Privacy & Security → Open Anyway. Hardened

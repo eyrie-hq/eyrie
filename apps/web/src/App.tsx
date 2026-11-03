@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChangeTape } from './components/ChangeTape';
+import { Drawer } from './components/Drawer';
 import { Panel } from './components/Panel';
 import { TopBar } from './components/TopBar';
 import { GraphView } from './graph/GraphView';
@@ -19,6 +20,7 @@ export function App() {
     <div className="flex h-full flex-col">
       <TopBar />
       <main className="relative flex min-h-0 flex-1">
+        <Drawer />
         <div className="relative min-w-0 flex-1">
           <GraphView />
           {!loaded ? <Notice title="Indexing the repository">Reading files and resolving relationships. Large repositories take a little longer the first time.</Notice> : null}
@@ -63,7 +65,7 @@ function Hint() {
         </>
       ) : (
         <>
-          Click a component to inspect it · <kbd>⌘K</kbd> search · <kbd>F</kbd> fit · <kbd>V</kbd> 3D · drag to pan, scroll to zoom
+          Click a component to inspect it · <kbd>⌘K</kbd> search · <kbd>A</kbd> ask · <kbd>F</kbd> fit · <kbd>V</kbd> 3D · drag to pan, scroll to zoom
         </>
       )}
     </p>

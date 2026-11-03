@@ -3,7 +3,17 @@ import { basename, join } from 'node:path';
 import { Language, Parser } from 'web-tree-sitter';
 import type { SourceLanguage } from '@eyrie/core';
 
-const require = createRequire(import.meta.url);
+/**
+ * Lazily, because this module also bundles to CommonJS for the desktop app's
+ * single-executable `eyrie`, where import.meta does not exist. Bundled builds
+ * always set EYRIE_GRAMMAR_DIR, so this is never reached there.
+ */
+let cachedRequire: NodeRequire | null = null;
+function wasmRequire(): NodeRequire {
+  cachedRequire ??= createRequire(import.meta.url);
+  return cachedRequire;
+}
+const require = { resolve: (id: string): string => wasmRequire().resolve(id) };
 
 type GrammarLanguage = Exclude<SourceLanguage, 'prisma'>;
 

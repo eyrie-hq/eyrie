@@ -10,13 +10,15 @@ import { extractPrisma } from './prisma.js';
 import { PythonExtractor } from './python.js';
 import { RubyExtractor } from './ruby.js';
 import { RustExtractor } from './rust.js';
+import { extractSecurity } from './security.js';
 import { TypeScriptExtractor } from './typescript.js';
 
 export { SOURCE_EXTENSIONS, detectLanguage, grammarFiles } from './languages.js';
 export { goPackageName } from './go.js';
+export { extractSecurity } from './security.js';
 
 /** Bump whenever extraction output changes so cached facts are re-parsed. */
-export const FACTS_VERSION = '4';
+export const FACTS_VERSION = '5';
 
 /**
  * A language adapter turns one file into facts. Adding a language means
@@ -60,7 +62,9 @@ export class TreeSitterAdapter implements LanguageAdapter {
     const tree = parser.parse(source);
     if (!tree) return null;
     try {
-      return new EXTRACTORS[language](path, language, contentHash(source), source).run(tree.rootNode);
+      const facts = new EXTRACTORS[language](path, language, contentHash(source), source).run(tree.rootNode);
+      facts.security = extractSecurity(path, language, facts, source);
+      return facts;
     } finally {
       tree.delete();
     }

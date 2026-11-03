@@ -34,6 +34,43 @@ export interface ModelFact {
   symbol?: string;
 }
 
+/** One environment variable read, with its name but never its value. */
+export interface EnvReadFact {
+  name: string;
+  line: number;
+}
+
+/**
+ * A string literal shaped like a secret. Location only: `kind` names the
+ * pattern that matched (e.g. `aws-access-key`, `private-key`), never the value.
+ */
+export interface SecretFact {
+  line: number;
+  kind: string;
+}
+
+/** A call that verifies a webhook signature (Stripe's constructEvent, Svix verify, …). */
+export interface WebhookVerifyFact {
+  line: number;
+  /** The callee as written, e.g. `stripe.webhooks.constructEvent`. */
+  callee: string;
+}
+
+/** Something that guards a route: a session/auth call, a decorator or attribute, a middleware matcher. */
+export interface AuthGuardFact {
+  line: number;
+  kind: string;
+  /** The matcher patterns, for middleware matchers. */
+  detail?: string;
+}
+
+export interface SecurityFacts {
+  env: EnvReadFact[];
+  secrets: SecretFact[];
+  webhooks: WebhookVerifyFact[];
+  guards: AuthGuardFact[];
+}
+
 export interface FileFacts {
   /** Repo-relative POSIX path. */
   path: string;
@@ -51,6 +88,8 @@ export interface FileFacts {
   references: ReferenceFact[];
   /** Express/Hono/Fastify-style route registrations found in the file. */
   routes: RouteFact[];
+  /** Security-relevant facts for the health check: env reads, secret-shaped literals, webhook verification and auth guards. */
+  security?: SecurityFacts;
   /** Python router composition, resolved across imports by the graph index. */
   routeMounts?: { router: string; target: string[]; prefix: string; line: number }[];
   /** Data models declared by schema files. */

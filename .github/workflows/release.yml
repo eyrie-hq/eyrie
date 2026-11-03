@@ -1,12 +1,15 @@
 name: Release
 
 # A v* tag builds the desktop app on each platform it ships for, each on its own kind of
-# runner, checks that each build indexes the fixture as the engine does, and attaches the
-# installers, SHA256SUMS and build provenance to a draft GitHub release. Nothing is
-# published: a person reviews the draft and publishes it.
+# runner, checks that each build indexes the fixture as the engine does (and that its
+# bundled `eyrie` command answers over MCP), publishes @eyrie-hq/cli to npm, and attaches
+# the installers, SHA256SUMS and build provenance to a draft GitHub release. The GitHub
+# release stays a draft: a person reviews it and publishes it. The npm publish needs a
+# trusted-publishing or token secret, NPM_TOKEN, on the repository.
 #
-# Pull requests that touch the desktop app run the same builds and checks without making a
-# release, and keep the installers as workflow artifacts for a week, to try on a clean machine.
+# Pull requests that touch the desktop app or the CLI run the same builds and checks
+# without making a release, and keep the installers as workflow artifacts for a week,
+# to try on a clean machine.
 
 on:
   push:
@@ -14,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'apps/desktop/**'
+      - 'apps/cli/**'
       - '.github/workflows/release.yml'
 
 permissions:
@@ -47,12 +51,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Check the tag matches the app's version
+      - name: Check the tag matches the app's and CLI's versions
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          version=$(node -p "require('./apps/desktop/package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json, which says $version"
+          app=$(node -p "require('./apps/desktop/package.json').version")
+          cli=$(node -p "require('./apps/cli/package.json').version")
+          if [ "v$app" != "$GITHUB_REF_NAME" ] || [ "v$cli" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json ($app) and apps/cli/package.json ($cli), which must all agree"
             exit 1
           fi
 
@@ -126,6 +131,36 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 7
+
+  npm:
+    # One package serves every platform (no native modules), so one publish
+    # covers all five builds. Pre-releases go to the `next` tag; releases to
+    # `latest`. The tarball is installed and checked before it is published.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @eyrie-hq/cli build
+      - run: pnpm --filter @eyrie-hq/cli exec npm pack --pack-destination "$RUNNER_TEMP"
+      - run: pnpm --filter @eyrie-hq/cli smoke -- --tarball "$RUNNER_TEMP"/eyrie-hq-cli-*.tgz
+      - name: Publish @eyrie-hq/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version=$(node -p "require('./apps/cli/package.json').version")
+          tag=latest
+          if [[ "$version" == *-* ]]; then tag=next; fi
+          pnpm --filter @eyrie-hq/cli exec npm publish --provenance --access public --tag "$tag"
 
   release:
     if: startsWith(github.ref, 'refs/tags/')

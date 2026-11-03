@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { GraphEngine } from '@eyrie/engine';
 import { createAiBackend, type ProjectKnowledge } from '@eyrie/knowledge';
+import { initAgents } from './init-agents.js';
 import { launch, openKnowledge } from './launch.js';
 import { EyrieMcp, serveStdio } from './mcp.js';
+import { VERSION } from './version.js';
 
 const HELP = `eyrie — live architecture graph for a codebase
 
 Usage
   eyrie [path] [options]       index a repository and open its live map
   eyrie mcp [path] [options]   serve the repository to coding agents over MCP (stdio)
+  eyrie init-agents [path]     tell the repository's coding agents about Eyrie's MCP tools
 
 Options
   --port <n>       Port for the local UI (default: 4319 or the next free one; 0 = any)
@@ -21,17 +23,21 @@ Options
   --no-open        Do not open the browser
   --no-watch       Index once without watching for changes
   --reset          Ignore the cache and re-parse every file
-  --ai <backend>   Note recorded commits with an AI backend: claude (your Claude Code CLI)
-                   or codex (your Codex CLI, macOS only). Off by default; also EYRIE_AI.
-                   Sends commit messages, file paths and component names, never source code.
+  --ai <backend>   Answer questions and note recorded commits with an AI backend:
+                   claude (your Claude Code CLI), codex (your Codex CLI,
+                   macOS only), muse (your Muse CLI), or openai (any
+                   OpenAI-compatible API: EYRIE_OPENAI_BASE_URL,
+                   EYRIE_OPENAI_API_KEY, EYRIE_OPENAI_MODEL). Off by default;
+                   also EYRIE_AI. Sends commit messages, file paths and
+                   component names, never source code.
   --ai-model <m>   Model for --ai (default: the backend's own)
+  --local          With init-agents: write CLAUDE.local.md (kept out of git)
+                   instead of AGENTS.md
   -h, --help       Show this help
 
 Add Eyrie to Claude Code (other MCP clients take the same command):
   claude mcp add eyrie -- eyrie mcp /path/to/repo
 `;
-
-const VERSION = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 async function main(): Promise<void> {
   // `pnpm start -- <path>` forwards a literal `--`; drop it so options still parse.
@@ -48,11 +54,17 @@ async function main(): Promise<void> {
       reset: { type: 'boolean', default: false },
       ai: { type: 'string' },
       'ai-model': { type: 'string' },
+      local: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
   if (values.help) {
     process.stdout.write(HELP);
+    return;
+  }
+  if (positionals[0] === 'init-agents') {
+    const result = initAgents(resolve(positionals[1] ?? process.cwd()), { local: values.local });
+    process.stdout.write(result.updated ? `Eyrie tools written to ${result.file}\n` : `${result.file} already tells agents about Eyrie\n`);
     return;
   }
   const ai = createAiBackend(values.ai ?? process.env.EYRIE_AI, { model: values['ai-model'] });
@@ -62,7 +74,7 @@ async function main(): Promise<void> {
   const log = (m: string) => process.stdout.write(`[eyrie] ${m}\n`);
   log(`Indexing ${root}`);
   const port = values.port === undefined ? undefined : Number(values.port);
-  const eyrie = await launch({ root, host: values.host, port, token: values.token, watch: !values['no-watch'], reset: values.reset, ai, log }).catch((err: unknown) => {
+  const eyrie = await launch({ root, host: values.host, port, token: values.token, webDir: process.env.EYRIE_WEB_DIR, watch: !values['no-watch'], reset: values.reset, ai, log }).catch((err: unknown) => {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') throw new Error(`Port ${values.port} is already in use. Choose another with --port, or use --port 0 for any free port.`);
     throw err;
   });
@@ -92,7 +104,7 @@ async function mcp(root: string, opts: { watch: boolean; reset: boolean; ai: Ret
     return { knowledge };
   });
   ready.catch((err: unknown) => log(`Could not index ${root}: ${(err as Error).message}`));
-  const server = new EyrieMcp({ engine, ready, version: VERSION });
+  const server = new EyrieMcp({ engine, ready, version: VERSION, ai: opts.ai });
   await serveStdio(server);
   server.dispose();
   await knowledge?.close();

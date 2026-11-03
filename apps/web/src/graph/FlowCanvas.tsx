@@ -17,10 +17,10 @@ import { OrthographicCamera } from 'three';
 import { store } from '../state/store';
 import { LANE_LABEL, catClass, dataRoleOf, edgeVerbs, isBroken, kindLabel, linkClass, systemPart } from './vocabulary';
 
-type ComponentNode = Node<{ node: ArchNode; mark?: Mark; dim: boolean; faded: boolean; match: boolean; exiting: boolean; city: boolean; roofTransform?: string }, 'component'>;
-type DependencyEdge = Edge<{ points: Point[]; hot: boolean; flow: boolean; sweep: number; description: string; city: boolean; label?: string; muted: boolean }, 'dependency'>;
+type ComponentNode = Node<{ node: ArchNode; mark?: Mark; dim: boolean; faded: boolean; match: boolean; exiting: boolean; city: boolean; roofTransform?: string; insight: boolean; insightMark?: string; insightSource?: string }, 'component'>;
+type DependencyEdge = Edge<{ points: Point[]; hot: boolean; flow: boolean; sweep: number; description: string; city: boolean; label?: string; muted: boolean; insight: boolean }, 'dependency'>;
 type Instance = ReactFlowInstance<ComponentNode, DependencyEdge>;
-const EMPTY_HIGHLIGHT: Highlight = { selected: null, focus: null, flow: false, matches: null, frame: null };
+const EMPTY_HIGHLIGHT: Highlight = { selected: null, focus: null, flow: false, matches: null, frame: null, insight: null };
 const GLYPH: Record<Mark, string> = { new: '+', modified: '~', removed: '−' };
 const CityLayer = lazy(() => import('../graph3d/CityLayer').then((module) => ({ default: module.CityLayer })));
 
@@ -28,10 +28,11 @@ const Component = memo(function Component({ data, selected }: NodeProps<Componen
   const { node, mark, dim, faded, match, exiting } = data;
   const Icon = node.lane === 'ui' ? FileCode2 : node.lane === 'api' || node.lane === 'edge' ? Route : node.lane === 'data' ? Database : node.lane === 'external' ? Network : Boxes;
   const path = node.sublabel ?? node.source?.file ?? '';
+  const insightMark = data.insightMark;
   return (
-    <div style={data.roofTransform ? { transform: data.roofTransform } : undefined} className={`flow-node${data.city ? ' city-label' : ''}${systemPart(node) ? ' is-system' : ''} ${catClass(node)}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${faded ? ' is-faded' : ''}${match ? ' is-match' : ''}${isBroken(node) ? ' is-broken' : ''}${mark ? ` mark-${mark}` : ''}${exiting ? ' is-exiting' : ''}`}>
+    <div style={data.roofTransform ? { transform: data.roofTransform } : undefined} className={`flow-node${data.city ? ' city-label' : ''}${systemPart(node) ? ' is-system' : ''} ${catClass(node)}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${faded ? ' is-faded' : ''}${match ? ' is-match' : ''}${isBroken(node) ? ' is-broken' : ''}${mark ? ` mark-${mark}` : ''}${exiting ? ' is-exiting' : ''}${data.insight ? ` is-insight is-insight-${data.insightSource ?? 'ask'}` : ''}`}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="flow-node-meta"><Icon size={12} aria-hidden="true" /><span>{kindLabel(node)}</span>{mark ? <span className={`flow-change ${mark}`} aria-label={mark}>{GLYPH[mark]}</span> : null}</div>
+      <div className="flow-node-meta"><Icon size={12} aria-hidden="true" /><span>{kindLabel(node)}</span>{mark ? <span className={`flow-change ${mark}`} aria-label={mark}>{GLYPH[mark]}</span> : null}{insightMark ? <span className={`flow-insight is-insight-${data.insightSource ?? 'ask'}`} aria-label={`cited: ${insightMark}`}>{insightMark}</span> : null}</div>
       <strong className="flow-node-title" title={node.label}>{node.label}</strong>
       <span className="flow-node-path" title={path}>{path.length > 31 ? `…${path.slice(-30)}` : path}</span>
       <Handle type="source" position={Position.Right} isConnectable={false} />
@@ -52,7 +53,7 @@ const Dependency = memo(function Dependency({ id, data, markerStart, markerEnd }
   const at = data?.label ? pointAlong(data.points, 0.5) : null;
   return (
     <>
-      <g className={`flow-edge${data?.hot ? ' hot' : ''}`}>
+      <g className={`flow-edge${data?.hot ? ' hot' : ''}${data?.insight ? ' is-insight' : ''}`}>
         <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={16} />
         <path ref={motionPath} d={path} fill="none" stroke="none" aria-hidden="true" />
         <g ref={particles} aria-hidden="true" />
@@ -203,6 +204,7 @@ export const FlowCanvas = forwardRef<CityRenderer, RendererCallbacks & { city?: 
   const emphasis = useMemo(() => {
     if (highlight.frame) return { nodes: highlight.frame, edges: null, soft: false };
     if (highlight.focus) return { nodes: highlight.focus.nodes, edges: highlight.focus.edges, soft: false };
+    if (highlight.insight) return { nodes: highlight.insight.ids, edges: null, soft: false };
     if (highlight.matches) return { nodes: highlight.matches, edges: null, soft: false };
     if (hover && layout) {
       const focus = focusSet([...layout.edges.values()].map((p) => p.edge), hover, 'neighbors');
@@ -211,26 +213,49 @@ export const FlowCanvas = forwardRef<CityRenderer, RendererCallbacks & { city?: 
     return { nodes: null, edges: null, soft: false };
   }, [highlight, hover, layout]);
 
+  const cityInsight = useMemo(() => {
+    const insight = highlight.insight;
+    if (!insight) return null;
+    return { ids: insight.ids, color: insight.source === 'health' ? 'broken' : insight.source === 'recent' ? 'modified' : 'frontend' };
+  }, [highlight.insight]);
+
+  // Edges of the insight's cited path, in order: consecutive path members run heavier.
+  const insightEdges = useMemo(() => {
+    const path = highlight.insight?.path;
+    if (!path?.length || !layout) return null;
+    const order = new Map(path.map((id, i) => [id, i]));
+    const ids = new Set<string>();
+    for (const p of layout.edges.values()) {
+      const a = order.get(p.edge.source);
+      const b = order.get(p.edge.target);
+      if (a !== undefined && b !== undefined && Math.abs(a - b) === 1) ids.add(p.edge.id);
+    }
+    return ids;
+  }, [highlight.insight, layout]);
+
   const roofTransform = useMemo(() => city && !webglError ? `matrix(${cityLabelMatrix(orientation).join(',')})` : undefined, [city, webglError, orientation]);
   const nodes = useMemo<ComponentNode[]>(() => [...(shownLayout?.nodes.values() ?? []), ...(city ? [] : exiting)].map((p) => {
     const removed = !layout?.nodes.has(p.node.id);
     const inactive = !!emphasis.nodes && !emphasis.nodes.has(p.node.id);
+    const insight = highlight.insight;
+    const cited = !!insight?.ids.has(p.node.id);
     return {
       id: p.node.id, type: 'component', position: { x: p.x, y: p.y }, width: nodeWidth, height: nodeHeight,
       selected: p.node.id === highlight.selected, selectable: !removed, focusable: !removed,
       ariaRole: 'button', ariaLabel: `${p.node.label}, ${kindLabel(p.node)}${marks.has(p.node.id) ? `, ${marks.get(p.node.id)}` : ''}`,
-      data: { node: p.node, mark: marks.get(p.node.id), dim: inactive && !emphasis.soft, faded: inactive && emphasis.soft, match: !!highlight.matches?.has(p.node.id), exiting: removed, city, roofTransform },
+      data: { node: p.node, mark: marks.get(p.node.id), dim: inactive && !emphasis.soft, faded: inactive && emphasis.soft, match: !!highlight.matches?.has(p.node.id), exiting: removed, city, roofTransform, insight: cited, insightMark: cited ? insight!.labels.get(p.node.id) : undefined, insightSource: insight?.source },
     };
-  }), [layout, shownLayout, city, roofTransform, nodeWidth, nodeHeight, exiting, marks, highlight.selected, highlight.matches, emphasis]);
+  }), [layout, shownLayout, city, roofTransform, nodeWidth, nodeHeight, exiting, marks, highlight.selected, highlight.matches, highlight.insight, emphasis]);
 
   const edges = useMemo<DependencyEdge[]>(() => {
     const sweepEdges = new Set([...(highlight.focus?.edges ?? [])].slice(0, 18));
     return [...(shownLayout?.edges.values() ?? [])].map((p) => {
     const edge = p.edge;
     const hot = !!emphasis.edges?.has(edge.id);
-    const inactive = emphasis.edges ? !hot : !!emphasis.nodes && !(emphasis.nodes.has(edge.source) && emphasis.nodes.has(edge.target));
+    const onPath = !!insightEdges?.has(edge.id);
+    const inactive = emphasis.edges ? !hot && !onPath : !!emphasis.nodes && !(emphasis.nodes.has(edge.source) && emphasis.nodes.has(edge.target));
     const role = dataRoleOf(edge);
-    const color = hot ? 'var(--color-text)' : role === 'read' ? 'var(--color-data)' : role === 'write' || role === 'readwrite' ? 'var(--color-service)' : 'var(--color-dim)';
+    const color = hot || onPath ? 'var(--color-text)' : role === 'read' ? 'var(--color-data)' : role === 'write' || role === 'readwrite' ? 'var(--color-service)' : 'var(--color-dim)';
     const marker = { type: MarkerType.Arrow, color, width: 14, height: 14 };
     const source = layout?.nodes.get(edge.source)?.node.label;
     const target = layout?.nodes.get(edge.target)?.node.label;
@@ -238,13 +263,13 @@ export const FlowCanvas = forwardRef<CityRenderer, RendererCallbacks & { city?: 
       id: edge.id, source: edge.source, target: edge.target, type: 'dependency', selectable: false,
       className: `${linkClass(edge)}${inactive ? emphasis.soft ? ' is-faded' : ' is-dim' : ''}`,
       markerEnd: marker, markerStart: role === 'readwrite' ? marker : undefined,
-      data: { points: p.points, hot, flow: highlight.flow && !!highlight.focus && !highlight.frame, sweep: highlight.selected && sweepEdges.has(edge.id) ? sweep : 0, city, muted: inactive,
+      data: { points: p.points, hot, flow: highlight.flow && !!highlight.focus && !highlight.frame, sweep: highlight.selected && sweepEdges.has(edge.id) ? sweep : 0, city, muted: inactive, insight: onPath,
         // System-view links merge many component links; name what they carry on the line itself.
         label: edge.meta?.system ? `${edgeVerbs(edge.kinds)}${edge.weight > 1 ? ` ×${edge.weight}` : ''}` : undefined,
         description: `${source} → ${target}: ${edgeVerbs(edge.kinds)}${edge.weight > 1 ? ` ×${edge.weight}` : ''}${edge.via?.length ? ` via ${edge.via.join(' › ')}` : ''}${edge.meta?.flipped ? ' (arrow follows the data)' : ''}` },
     };
     });
-  }, [layout, shownLayout, city, emphasis, highlight.flow, highlight.focus, highlight.frame, highlight.selected, sweep]);
+  }, [layout, shownLayout, city, emphasis, insightEdges, highlight.flow, highlight.focus, highlight.frame, highlight.selected, sweep]);
 
   return (
     <div ref={host} className={`flow-canvas${city ? ' flow-city' : ''}${webglError ? ' webgl-unavailable' : ''}${moving && !city ? ' animate-layout' : ''}`}
@@ -284,7 +309,7 @@ export const FlowCanvas = forwardRef<CityRenderer, RendererCallbacks & { city?: 
         minZoom={0.35} maxZoom={2.5} panOnDrag={city ? [0] : true} zoomOnDoubleClick={false} attributionPosition="top-right"
         ariaLabelConfig={{ 'node.a11yDescription.default': 'Press Enter or Space to inspect this component. Press Escape to clear selection.' }}
       >
-        {city && cityLayout ? <Suspense fallback={<div className="city-loading" role="status">Loading 3D view...</div>}><CityLayer layout={cityLayout} origin={origin.current} angle={orientation} emphasis={emphasis} selected={highlight.selected} marks={marks} flow={highlight.flow && !!highlight.focus && !highlight.frame} sweep={sweep} sceneRef={scene} onError={onWebglError} /></Suspense> : null}
+        {city && cityLayout ? <Suspense fallback={<div className="city-loading" role="status">Loading 3D view...</div>}><CityLayer layout={cityLayout} origin={origin.current} angle={orientation} emphasis={emphasis} selected={highlight.selected} marks={marks} flow={highlight.flow && !!highlight.focus && !highlight.frame} sweep={sweep} insight={cityInsight} sceneRef={scene} onError={onWebglError} /></Suspense> : null}
         {!city ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--color-rule-strong)" /> : null}
         <ViewportPortal>
           <div className="flow-lanes" aria-hidden="true">

@@ -1,8 +1,12 @@
 export { ProjectKnowledge, type KnowledgeOptions, type KnowledgeSummary } from './knowledge.js';
-export { KnowledgeStore, type AnalysisRecord, type AnalysisStatus, type CommitNote, type CommitRecord, type ComponentRef } from './store.js';
+export { EMPTY_CHANGES, KnowledgeStore, type AnalysisRecord, type AnalysisStatus, type AskRecord, type CommitNote, type CommitRecord, type ComponentRef, type SessionChanges, type SessionComponent, type SessionLink, type SessionNote, type SessionNoteStatus, type SessionRecord } from './store.js';
 export { analysisRequest, analyzePending, validateNote, type AiBackend, type AiRequest, type AiResult, type AnalyzeOptions, type ProjectContext } from './analysis.js';
+export { ask, type AskAnswer, type AskOptions, type AskResult, type AskStatus, type AskStep, type AskToolCall, type AskTools } from './ask.js';
+export { MAX_NOTED_COMPONENTS, noteRequest, noteSessionChanges, validateSessionNote, type NotedComponent, type SessionNoteEntry, type SessionNoteInput } from './notes.js';
 export { AI_BACKENDS, createAiBackend, type AiBackendName } from './backends.js';
 export { claudeArgs, claudeCodeBackend, parseClaudeOutput, type ClaudeCodeOptions } from './claude.js';
 export { CODEX_DISABLED_FEATURES, codexArgs, codexBackend, parseCodexRun, seatbeltProfile, strictSchema, type CodexOptions } from './codex.js';
-export { agentsOf, headCommit, readCommits, recentHashes, type CommitFile, type GitCommit } from './git.js';
+export { museArgs, museBackend, musePrompt, parseMuseRun, type MuseOptions } from './muse.js';
+export { OPENAI_DEFAULT_BASE_URL, OPENAI_DEFAULT_MODEL, openaiBackend, openaiBody, openaiConfig, parseOpenaiResponse, type OpenAiConfig, type OpenAiOptions } from './openai.js';
+export { agentOfClient, agentsOf, headCommit, isTracked, readCommits, recentHashes, type CommitFile, type GitCommit } from './git.js';
 export { VIEW_LIMITS, commitView, type CommitView, type CommitViewNote } from './views.js';

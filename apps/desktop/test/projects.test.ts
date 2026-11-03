@@ -70,6 +70,15 @@ describe('ProjectStore', () => {
     expect(saved.scan).toEqual({ at: 5000, ms: 412, files: 12, symbols: 80, components: 9, links: 14, frameworks: ['next', 'prisma'] });
   });
 
+  it('asks about agents once per project', () => {
+    const file = listFile();
+    const store = new ProjectStore(file);
+    const { project } = store.add(folder('shop'));
+    expect(project.agentsPromptedAt).toBeUndefined();
+    store.markAgentsPrompted(project.id, 7000);
+    expect(new ProjectStore(file).get(project.id)?.agentsPromptedAt).toBe(7000);
+  });
+
   it('removes a project from the list only', () => {
     const store = new ProjectStore(listFile());
     const repo = folder('shop');

@@ -54,6 +54,23 @@ describe('server', () => {
     expect((await get('/api/source?file=package.json')).status).toBe(404);
   });
 
+  it('serves recent sessions', async () => {
+    const res = await get('/api/recent');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sessions: unknown[] };
+    expect(Array.isArray(body.sessions)).toBe(true);
+  });
+
+  it('serves the health check', async () => {
+    const res = await get('/api/check');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { findings: unknown[]; checkedAt: number; filesChecked: number; counts: Record<string, number> };
+    expect(Array.isArray(body.findings)).toBe(true);
+    expect(body.filesChecked).toBeGreaterThan(0);
+    expect(typeof body.checkedAt).toBe('number');
+    expect(Object.keys(body.counts).sort()).toEqual(['high', 'low', 'medium']);
+  });
+
   it('sends a hello message over WebSocket', async () => {
     const ws = new WebSocket(`${server.url.replace('http', 'ws')}/ws?token=${TOKEN}`);
     const msg = await new Promise<ServerMessage>((resolve, reject) => {

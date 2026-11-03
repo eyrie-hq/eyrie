@@ -1,11 +1,11 @@
-import { ChevronLeft, Database, GitBranch, Layers, ListOrdered, Map as MapIcon, Search, X } from 'lucide-react';
+import { ChevronLeft, Database, GitBranch, Layers, ListOrdered, Map as MapIcon, Search, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import type { ArchCategory } from '@eyrie/core';
 import { matches } from '../graph/analysis';
 import { useLensGraph } from '../graph/useLensGraph';
 import { CATEGORY_LABEL, CATEGORY_ORDER } from '../graph/vocabulary';
 import { desktop, projectsShortcut } from '../lib/desktop';
-import { store, useStore, type ConnectionStatus, type Lens } from '../state/store';
+import { store, useStore, type ConnectionStatus, type DrawerTab, type Lens } from '../state/store';
 import { ThemeToggle } from './ThemeToggle';
 
 export function TopBar() {
@@ -54,6 +54,7 @@ export function TopBar() {
               <Stat label="links" value={edges.length} />
             </dl>
           ) : null}
+          <Insights />
         </div>
         <Filters present={present} />
       </div>
@@ -67,6 +68,45 @@ function Stat({ label, value }: { label: string; value: number }) {
       <dd>{value.toLocaleString()}</dd>
       <dt>{label}</dt>
     </div>
+  );
+}
+
+/** Counters that open the insight drawer. */
+function Insights() {
+  const drawer = useStore((s) => s.drawer);
+  const health = useStore((s) => s.health);
+  const recent = useStore((s) => s.recent);
+  const buttons: { tab: DrawerTab; label: string; title: string; key?: string }[] = [
+    { tab: 'ask', label: 'Ask', title: 'Ask the map (A)', key: 'A' },
+    { tab: 'health', label: 'Health', title: 'Security findings' },
+    { tab: 'recent', label: 'Recent', title: 'Recent agent work' },
+  ];
+  // Health and sessions load once up front so the counters are there before the tabs open.
+  useEffect(() => {
+    if (!store.get().health && !store.get().healthLoading) void store.loadHealth();
+    if (!store.get().recent && !store.get().recentLoading) void store.loadRecent();
+  }, []);
+  const count = health?.findings.length ?? 0;
+  const sessions = recent?.sessions.length ?? 0;
+  return (
+    <nav className="navbar-insights" aria-label="Insights">
+      {buttons.map((b) => (
+        <button
+          key={b.tab}
+          type="button"
+          aria-pressed={drawer.open && drawer.tab === b.tab}
+          title={b.tab === 'health' && health ? `${count} finding${count === 1 ? '' : 's'}` : b.tab === 'recent' && recent ? `${sessions} session${sessions === 1 ? '' : 's'}` : b.title}
+          onClick={() => (drawer.open && drawer.tab === b.tab ? store.closeDrawer() : store.openDrawer(b.tab))}
+        >
+          {b.tab === 'health' && count > 0 ? <TriangleAlert size={12} aria-hidden="true" className="insight-alert" /> : null}
+          {b.tab === 'recent' && sessions > 0 ? <span className="insight-dot" aria-hidden="true" /> : null}
+          {b.label}
+          {b.tab === 'health' && health ? <span className="insight-count">{count}</span> : null}
+          {b.tab === 'recent' && recent ? <span className="insight-count">{sessions}</span> : null}
+          {b.key ? <kbd>{b.key}</kbd> : null}
+        </button>
+      ))}
+    </nav>
   );
 }
 

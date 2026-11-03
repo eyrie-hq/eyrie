@@ -95,17 +95,19 @@ Options: `--port <n>`, `--no-open`, `--no-watch` (index once), `--reset` (ignore
 
 `eyrie mcp` serves a repository's live architecture to coding agents over the [Model Context Protocol](https://modelcontextprotocol.io), on stdio.
 
-**It runs from a source checkout, not from the desktop app, for now.** An agent starts an MCP server as a command, and the desktop app is not one: its Electron fuses stop it running as Node, which is what `eyrie mcp` needs. The plan is a separate `eyrie` command installed alongside the app; see [MCP in the desktop app](docs/06-implementation-plan/feature-mcp-desktop/README.md). Until then, clone this repository, run `pnpm install`, and point your agent at it as below, replacing `/path/to/eyrie` with the checkout and `/path/to/your/repo` with the project. `pnpm --silent` keeps pnpm's own output off the protocol stream. The app and `eyrie mcp` share the index cache, and both can have the same project open; one of them may then skip the cache for that run, which only makes it slower.
+Three ways to run it, each its own engine: from npm (needs Node.js 22.13+), from the desktop app (a project's ⋯ menu → Connect Coding Agents, which runs the setup for you), or from a source checkout. The app and `eyrie mcp` share the index cache and can have the same project open; with the map open, an agent's edit animates into it.
 
 **Claude Code** and **Codex** have the same one-line setup:
 
 ```bash
-claude mcp add eyrie -- pnpm --silent --dir /path/to/eyrie eyrie mcp /path/to/your/repo
+claude mcp add eyrie -- npx -y @eyrie-hq/cli mcp /path/to/your/repo
 ```
 
 ```bash
-codex mcp add eyrie -- pnpm --silent --dir /path/to/eyrie eyrie mcp /path/to/your/repo
+codex mcp add eyrie -- npx -y @eyrie-hq/cli mcp /path/to/your/repo
 ```
+
+With the `eyrie` command installed (from the desktop app, or `npm install -g @eyrie-hq/cli`), replace `npx -y @eyrie-hq/cli` with `eyrie`. From a source checkout, replace it with `pnpm --silent --dir /path/to/eyrie eyrie` (`pnpm --silent` keeps pnpm's own output off the protocol stream).
 
 **Gemini CLI** (`.gemini/settings.json` in the project, or `~/.gemini/settings.json`) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json`) read the same `mcpServers` block:
 
@@ -113,8 +115,8 @@ codex mcp add eyrie -- pnpm --silent --dir /path/to/eyrie eyrie mcp /path/to/you
 {
   "mcpServers": {
     "eyrie": {
-      "command": "pnpm",
-      "args": ["--silent", "--dir", "/path/to/eyrie", "eyrie", "mcp", "/path/to/your/repo"]
+      "command": "npx",
+      "args": ["-y", "@eyrie-hq/cli", "mcp", "/path/to/your/repo"]
     }
   }
 }
@@ -127,8 +129,8 @@ codex mcp add eyrie -- pnpm --silent --dir /path/to/eyrie eyrie mcp /path/to/you
   "servers": {
     "eyrie": {
       "type": "stdio",
-      "command": "pnpm",
-      "args": ["--silent", "--dir", "/path/to/eyrie", "eyrie", "mcp", "/path/to/your/repo"]
+      "command": "npx",
+      "args": ["-y", "@eyrie-hq/cli", "mcp", "/path/to/your/repo"]
     }
   }
 }
@@ -136,7 +138,7 @@ codex mcp add eyrie -- pnpm --silent --dir /path/to/eyrie eyrie mcp /path/to/you
 
 Tested end to end with Claude Code and Codex; Gemini CLI, Cursor and VS Code use their standard MCP configuration and were not tested here. Windsurf, Zed and other clients take the same command and arguments in their own MCP settings.
 
-The agent then has read-only tools that answer from the same graph as the map, kept current as files are saved:
+The agent then has tools that answer from the same graph as the map, kept current as files are saved. All leave the repository alone; `ask` and `record_intent` additionally store in Eyrie's local `knowledge.db` (the question and its answer, the session):
 
 | Tool | Answers |
 | --- | --- |
@@ -146,15 +148,18 @@ The agent then has read-only tools that answer from the same graph as the map, k
 | `find_path` | The chain of dependencies between two components |
 | `components_for_files` | Which components own the files the agent is about to edit |
 | `recent_changes` | What the agent's edits changed in the architecture since the server started |
+| `record_intent` | Records the task at the start and the summary at the end, so recent work keeps its why |
 | `commit_history` | Recorded commits, the agents that co-authored them, and AI notes when turned on |
+| `check` | Security findings over the whole project, or only the files given |
+| `ask` | A plain-language question answered by a model that only used the tools above (needs `--ai`) |
 
-A name that matches several components is refused with the candidates rather than guessed. When the desktop app runs from a checkout, its project menu has **Copy MCP Command for Claude Code** and **for Codex**.
+A name that matches several components is refused with the candidates rather than guessed.
 
 ## Commit history and AI notes
 
 Whenever Eyrie opens or scans a project, it records the commits it has not seen yet in the project's `knowledge.db`: the message, the author and any coding agent in a `Co-Authored-By` trailer, the files changed with line counts, and the architecture components those files belong to. While a project is open it checks for new commits every 5 seconds.
 
-Optionally, Eyrie has each commit **noted** by your Claude Code or Codex CLI: what the commit is for, whether what it changed matches its message, and its architectural risk. A commit titled "fix: typo in checkout" that also edits the data model is flagged. Turn it on per project in the desktop app (**Analyse Commits with Claude** or **with Codex** in the project's ⋯ menu), or with `--ai claude` / `--ai codex` (or `EYRIE_AI`) on the command line. It is off by default. Codex is available on macOS only for now, because Eyrie runs it inside a macOS sandbox (see [Privacy and security](#privacy-and-security)). On Windows, Claude Code must be the `claude.exe` from Anthropic's native installer: Eyrie's instructions span several lines, and the npm package's `claude.cmd` cannot be given those.
+Optionally, Eyrie has each commit **noted** by an AI backend: what the commit is for, whether what it changed matches its message, and its architectural risk. A commit titled "fix: typo in checkout" that also edits the data model is flagged. Turn it on per project in the desktop app (**Analyse Commits** in the project's ⋯ menu: Claude, Codex or Muse), or with `--ai <backend>` (or `EYRIE_AI`) on the command line, where the backend is `claude`, `codex`, `muse` or `openai`. It is off by default. The same backend answers questions in the app's Ask tab and through the `ask` MCP tool. Codex is available on macOS only for now, because Eyrie runs it inside a macOS sandbox (see [Privacy and security](#privacy-and-security)). On Windows, Claude Code must be the `claude.exe` from Anthropic's native installer: Eyrie's instructions span several lines, and the npm package's `claude.cmd` cannot be given those.
 
 Notes are opinions, kept beside the facts and labelled with the model that wrote them. Every observation must cite a file or component the commit actually touched, or the note is rejected. A note never becomes a dependency, a finding or a rule.
 
@@ -232,12 +237,14 @@ git log ── new commits ──► knowledge.db ◄── components each comm
 
 - **With AI notes off, the default, nothing leaves your machine.** Eyrie makes no network requests; fonts are bundled. The desktop app's window loads only Eyrie's own pages, served by its local engine; links open in your browser, and spellcheck is off, so Chromium downloads no dictionaries.
 - **The Windows installer** downloads Eyrie's icon from this repository on GitHub once, while installing, to show in Installed apps. That is the installer (Squirrel) doing it, not Eyrie.
-- **With AI notes on** for a project, Eyrie runs your Claude Code or Codex CLI on recorded commits. It sends commit messages, author names, changed file paths with line counts and the names of the architecture components involved, and never source code. The CLI sends them to Anthropic or OpenAI under your own account.
-  - **Claude Code** runs with no tools, no MCP servers and none of your settings, in an empty temporary folder, so the model can read nothing else and change nothing.
-  - **Codex** keeps a command tool that cannot be turned off, and its own read-only sandbox still lets commands read any of your files. So Eyrie runs Codex itself inside a macOS sandbox: it can write nowhere except one empty workspace (holding a copy of Codex's login) and `/dev`, and it cannot read file contents or list folders in your home folder, your temporary folder or on external drives. Codex's command sandbox cannot start inside it, so no command runs at all, and Codex also runs read-only, without your config, rules, saved session, web search, connectors, plugins or its code-mode tools. Tested with Codex's own protections deliberately switched off: its patch tool and shell could write only inside the workspace, and reading `~/.ssh` was refused. System files outside your home folder, such as `/etc/hosts`, stay readable, and no command can run to read them.
+- **With AI on** for a project (commit notes, the Ask tab, the `ask` tool), Eyrie runs your chosen backend. It sends commit messages, author names, changed file paths with line counts and the names of the architecture components involved, and never source code.
+  - **Claude Code** runs with no tools, no MCP servers and none of your settings, in an empty temporary folder, so the model can read nothing else and change nothing. It sends to Anthropic under your own account.
+  - **Codex** keeps a command tool that cannot be turned off, and its own read-only sandbox still lets commands read any of your files. So Eyrie runs Codex itself inside a macOS sandbox: it can write nowhere except one empty workspace (holding a copy of Codex's login) and `/dev`, and it cannot read file contents or list folders in your home folder, your temporary folder or on external drives. Codex's command sandbox cannot start inside it, so no command runs at all, and Codex also runs read-only, without your config, rules, saved session, web search, connectors, plugins or its code-mode tools. Tested with Codex's own protections deliberately switched off: its patch tool and shell could write only inside the workspace, and reading `~/.ssh` was refused. System files outside your home folder, such as `/etc/hosts`, stay readable, and no command can run to read them. It sends to OpenAI under your own account.
+  - **Muse** runs with writing, shell commands and web access turned off, in an empty temporary folder, so the model can read nothing else and change nothing. It sends to the model provider you signed in with, under your own account.
+  - **OpenAI-compatible API** (command line only) posts to the endpoint you configure (`EYRIE_OPENAI_BASE_URL`, defaulting to OpenAI) with your API key (`EYRIE_OPENAI_API_KEY`). It sends to that endpoint under your own account.
 - The server binds to `127.0.0.1`, requires a random per-run access token, and rejects requests whose `Host` header is not local (DNS-rebinding protection).
 - The source endpoint only serves files that are in the index. `.env` files, keys and anything ignored by git are never readable through it.
-- The MCP server has no network listener: it talks only to the agent that started it, over stdio, and every tool is read-only.
+- The MCP server has no network listener: it talks only to the agent that started it, over stdio, and every tool leaves the repository alone (`ask` stores the question and its answer in Eyrie's local `knowledge.db`).
 - `git` runs without a shell and with the settings a repository could use to run its own programs turned off.
 - The data lives in `~/.eyrie/repos/<hash>/` (override with `EYRIE_HOME`). Delete that directory, or run with `--reset`, to start fresh. The desktop app also keeps its project list (`projects.json`) and your theme, view and lens (`prefs.json`) in its own folder, listed under [Install](#install).
 
@@ -254,15 +261,17 @@ packages/
   lens/          views over the architecture graph: data flow, sequence, System; trace, impact and paths
   storage/       SQLite (node:sqlite) facts cache, nodes and edges
   engine/        scanning, ignore rules, config loading, watching, update pipeline
-  knowledge/     knowledge.db: recorded git commits mapped onto components; optional AI notes (Claude Code or Codex CLI)
+  knowledge/     knowledge.db: recorded git commits mapped onto components; optional AI notes and answers (Claude Code, Codex, Muse or OpenAI-compatible API)
   server/        CLI, HTTP API, WebSocket and the MCP server (`eyrie mcp`)
 apps/
   web/           React UI: ELK layout, React Flow navigation, Three.js 3D city, anime.js animation
   desktop/       Electron shell (Electron Forge): runs the engine in a utility process and shows the UI
+  cli/           @eyrie-hq/cli: the published `eyrie` command and the desktop app's single executable
 fixtures/
   bookstore-app/ sample Next.js app used by tests and demos
 scripts/
   fetch-smoke-repo.sh  clones a real OSS app into .smoke/ for the smoke test
+  ask-eval/            ten scored questions for Ask the map, with recorded runs
 LICENSE          GNU AGPL-3.0
 THIRD-PARTY-NOTICES.md  licences of bundled dependencies and fonts
 ```

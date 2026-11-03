@@ -81,12 +81,58 @@ describe('MCP server', () => {
     expect((await rpc('tools/call', { name: 'rm_rf' }))!.error!.code).toBe(-32602);
   });
 
-  it('lists read-only tools', async () => {
+  it('lists read-only tools, plus ask, which stores its answer', async () => {
     const { tools } = (await rpc('tools/list'))!.result as { tools: { name: string; inputSchema: object; annotations: { readOnlyHint: boolean } }[] };
-    expect(tools.map((t) => t.name)).toEqual(['architecture_overview', 'find_components', 'explain_component', 'impact', 'trace', 'find_path', 'components_for_files', 'recent_changes', 'commit_history']);
+    expect(tools.map((t) => t.name)).toEqual([
+      'architecture_overview',
+      'find_components',
+      'explain_component',
+      'impact',
+      'trace',
+      'find_path',
+      'components_for_files',
+      'recent_changes',
+      'record_intent',
+      'commit_history',
+      'check',
+      'ask',
+    ]);
     for (const t of tools) {
-      expect(t.annotations.readOnlyHint).toBe(true);
+      expect(t.annotations.readOnlyHint).toBe(t.name !== 'ask' && t.name !== 'record_intent');
       expect(t.inputSchema).toMatchObject({ type: 'object' });
+    }
+  });
+
+  it('refuses to ask with AI off, and answers through a backend when one is set', async () => {
+    const off = await call('ask', { question: 'Where is the cart?' });
+    expect(off.isError).toBe(true);
+    expect(off.body.error).toContain('AI is off');
+
+    const turns = [
+      { answer: { answer: 'I cannot tell without looking.', steps: [] } },
+      { answer: { answer: 'The cart is a service.', steps: [{ text: 'Find the cart.', componentIds: ['service:cart'] }] } },
+    ];
+    let n = 0;
+    const backend = { name: 'scripted', run: async () => ({ json: turns[n++] }) };
+    const asking = new EyrieMcp({ engine, ready: Promise.resolve({ knowledge }), version: '9.9.9', ai: backend });
+    const askRpc = async (question: string) => {
+      const res = await asking.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'ask', arguments: { question } } });
+      const ok = res as unknown as { result: { content: { text: string }[] } };
+      return JSON.parse(ok.result.content[0]!.text) as { status: string; answer: { steps: unknown[] } | null; backend: string; id: number; error: string | null };
+    };
+    try {
+      const ok = await askRpc('Is there a cart?');
+      expect(ok.status).toBe('ok');
+      expect(ok.answer?.steps).toEqual([]);
+      expect(ok.backend).toBe('scripted');
+      expect(typeof ok.id).toBe('number');
+      // service:cart is not grounded in a tool result (the script answered at once), so the loop rejects it — and stores the rejection.
+      const rejected = await askRpc('Where is the cart?');
+      expect(rejected.status).toBe('rejected');
+      expect(rejected.error).toContain('service:cart');
+      expect(knowledge.store.askHistory(2).map((q) => q.status)).toEqual(['rejected', 'ok']);
+    } finally {
+      asking.dispose();
     }
   });
 
@@ -150,6 +196,22 @@ describe('MCP server', () => {
     expect(await call('components_for_files', { files: [] })).toMatchObject({ isError: true, body: { error: 'Give the files as a list of paths.' } });
   });
 
+  it('checks the whole project, or only the files given', async () => {
+    const full = await call('check');
+    expect(full.isError).toBe(false);
+    expect(full.body).toMatchObject({ filesChecked: expect.any(Number), checkedAt: expect.any(Number), counts: expect.any(Object) });
+    expect(Array.isArray(full.body.findings)).toBe(true);
+    for (const f of full.body.findings as Record<string, any>[]) {
+      expect(f).toMatchObject({ id: expect.any(String), rule: expect.any(String), severity: expect.any(String), evidence: expect.any(String), fixPrompt: expect.any(String) });
+    }
+    const route = byKind('api_route');
+    const scoped = await call('check', { files: [route.files[0]] });
+    expect(scoped.isError).toBe(false);
+    for (const f of (scoped.body.findings ?? []) as Record<string, any>[]) {
+      expect(f.files.some((file: { path: string }) => file.path === route.files[0])).toBe(true);
+    }
+  });
+
   it('keeps counts in range, and cuts long lanes to their most connected components', async () => {
     expect((await call('commit_history', { limit: -5 })).body.commits).toHaveLength(1);
     expect((await call('commit_history', { limit: 'lots' })).body.commits).toHaveLength(2);
@@ -185,7 +247,7 @@ describe('MCP server', () => {
     const change = body.changes.find((c: { seq: number }) => c.seq === 41);
     expect(change.componentsAdded).toEqual([{ id: 'new-svc', label: 'PaymentsService', kind: victim.kind, lane: victim.lane }]);
     expect(change.componentsRemoved[0]).toMatchObject({ id: victim.id, label: victim.label });
-    expect(change.linksAdded).toEqual([{ from: 'PaymentsService', to: victim.label, kinds: ['CALLS'] }]);
+    expect(change.linksAdded).toEqual([{ source: 'new-svc', target: victim.id, from: 'PaymentsService', to: victim.label, kinds: ['CALLS'] }]);
     expect((await call('recent_changes', { since: 41 })).body.changes).toEqual([]);
   });
 

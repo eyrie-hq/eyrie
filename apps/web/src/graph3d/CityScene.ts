@@ -172,17 +172,18 @@ export class CityScene {
     this.drawWithShadows();
   }
 
-  emphasize(emphasis: CityEmphasis, selected: string | null, marks: Map<string, Mark>, flow: boolean, sweep: number): void {
+  emphasize(emphasis: CityEmphasis, selected: string | null, marks: Map<string, Mark>, flow: boolean, sweep: number, insight: { ids: Set<string>; color: string } | null = null): void {
     if (!this.layout) return;
     for (const [id, block] of this.blocks) {
       const node = this.layout.nodes.get(id)!.node;
       const category = isBroken(node) ? 'broken' : node.category === 'infra' ? 'utility' : node.category;
       const active = !emphasis.nodes || emphasis.nodes.has(id);
+      const cited = !!insight?.ids.has(id);
       const categoryColor = this.color(category);
       block.surface.color.copy(this.color('ink-2')).lerp(categoryColor, id === selected ? 0.28 : 0.12);
       block.surface.opacity = active ? 1 : emphasis.soft ? 0.55 : 0.22;
-      block.outline.color.copy(marks.has(id) ? this.color(marks.get(id)!) : categoryColor);
-      block.outline.opacity = active ? id === selected ? 1 : 0.6 : 0.16;
+      block.outline.color.copy(cited ? this.color(insight!.color) : marks.has(id) ? this.color(marks.get(id)!) : categoryColor);
+      block.outline.opacity = active ? (id === selected || cited ? 1 : 0.6) : 0.16;
       block.group.children[0]!.castShadow = active;
       if (marks.get(id) === 'removed' && !reducedMotion()) {
         animate(block.surface, { opacity: 0, duration: 280, ease: 'inQuad', onUpdate: this.drawWithShadows });

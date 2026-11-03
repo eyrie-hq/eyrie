@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eyrie: Health</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=Fragment+Mono&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d1012}
+a{color:#e7e9e4}a:hover{color:#ffffff}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid #7aa7ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 960px; display: flex; flex-direction: column; background: #0d1012; color: #e7e9e4; font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif; font-size: 13px; line-height: 1.5">
+
+<header style="min-height: 52px; flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px 16px; box-sizing: border-box; background: #13171a; border-bottom: 1px solid #252b30">
+  <div style="display: flex; align-items: center; gap: 10px">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7aa7ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19 L10 7 L14 13 L17 9 L21 19 Z"></path></svg>
+    <span style="font-size: 15px; font-weight: 750">Eyrie</span>
+    <span style="color: #626b70">/</span>
+    <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 12px; color: #9aa3a7">bookstore-app</span>
+  </div>
+  <div role="group" aria-label="Lens" style="display: flex; gap: 2px; padding: 3px; background: #0d1012; border: 1px solid #252b30; border-radius: 6px">
+    <button type="button" aria-pressed="false" style="height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #9aa3a7; font-size: 12px; cursor: pointer">System</button>
+    <button type="button" aria-pressed="true" style="height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: #20262b; color: #e7e9e4; font-size: 12px; font-weight: 620; cursor: pointer">Architecture</button>
+    <button type="button" aria-pressed="false" style="height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #9aa3a7; font-size: 12px; cursor: pointer">Data flow</button>
+    <button type="button" aria-pressed="false" style="height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #9aa3a7; font-size: 12px; cursor: pointer">Sequence</button>
+  </div>
+  <div style="display: flex; gap: 14px; font-size: 12px; color: #9aa3a7">
+    <span><span style="font-family: 'Fragment Mono', ui-monospace, monospace; color: #e7e9e4">22</span> components</span>
+    <span><span style="font-family: 'Fragment Mono', ui-monospace, monospace; color: #e7e9e4">19</span> links</span>
+  </div>
+  <div style="flex-grow: 1"></div>
+  <nav aria-label="Insights" style="display: flex; gap: 6px">
+    <a href="health.dc.html" aria-current="page" style="height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 9999px; background: #302629; border: 1px solid #ff6b6b; text-decoration: none; font-size: 12px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 L22 20 H2 Z"></path><path d="M12 10 V14"></path><path d="M12 17 V17.5"></path></svg>
+      <span style="font-family: 'Fragment Mono', ui-monospace, monospace">3</span><span style="color: #9aa3a7">Health</span>
+    </a>
+    <a href="recent-work.dc.html" style="height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 9999px; background: #191e22; border: 1px solid #252b30; text-decoration: none; font-size: 12px">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #58d68d"></span>
+      <span style="font-family: 'Fragment Mono', ui-monospace, monospace">4</span><span style="color: #9aa3a7">Recent</span>
+    </a>
+    <a href="ask.dc.html" style="height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 9999px; background: #191e22; border: 1px solid #252b30; text-decoration: none; font-size: 12px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7aa7ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5 H20 V16 H9 L5 20 V16 H4 Z"></path></svg>
+      <span>Ask</span><span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; color: #899398">A</span>
+    </a>
+  </nav>
+  <label style="position: relative; display: flex; align-items: center">
+    <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search components</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#899398" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="position: absolute; left: 10px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20 L16 16"></path></svg>
+    <input type="search" placeholder="Search   /" style="width: 180px; height: 32px; box-sizing: border-box; padding: 0 12px 0 32px; background: #0d1012; border: 1px solid #252b30; border-radius: 6px; font-size: 12px">
+  </label>
+</header>
+
+<div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+
+  <aside aria-label="Health" style="flex: 1 1 320px; max-width: 100%; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 14px; background: #13171a; border-right: 1px solid #252b30">
+    <nav aria-label="Drawer" style="display: flex; gap: 2px; padding: 3px; background: #0d1012; border: 1px solid #252b30; border-radius: 6px">
+      <a href="ask.dc.html" style="flex: 1; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 4px; text-decoration: none; font-size: 12px; color: #9aa3a7">Ask</a>
+      <a href="health.dc.html" aria-current="page" style="flex: 1; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: 620; background: #20262b">Health <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; color: #f98a89">3</span></a>
+      <a href="recent-work.dc.html" style="flex: 1; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 4px; text-decoration: none; font-size: 12px; color: #9aa3a7">Recent work <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px">4</span></a>
+    </nav>
+
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+      <h1 style="margin: 0; font-size: 15px; font-weight: 750">3 findings</h1>
+      <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; color: #899398">checked 2 min ago · 41 files</span>
+    </div>
+    <div style="display: flex; gap: 6px">
+      <span style="height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #343b41; border-radius: 9999px; font-size: 11px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b"></span>2 high</span>
+      <span style="height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #343b41; border-radius: 9999px; font-size: 11px"><span style="width: 6px; height: 6px; border-radius: 1px; background: #f5a25d"></span>1 medium</span>
+    </div>
+
+    <article style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #191e22; border: 1px solid #ff6b6b; border-radius: 8px">
+      <span style="display: flex; align-items: center; gap: 6px; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #f98a89"><span style="width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b"></span>HIGH · AUTH</span>
+      <h2 style="margin: 0; font-size: 13px; font-weight: 620; line-height: 1.35">Public route writes orders without sign-in</h2>
+      <p style="margin: 0; font-size: 12px; color: #9aa3a7">The checkout route reaches a write to Order, and no auth guard sits anywhere on that path. middleware.ts only matches /dashboard and /order pages.</p>
+      <div style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 11px; padding: 6px 8px; background: #0d1012; border: 1px solid #252b30; border-radius: 4px; color: #e7e9e4">checkout → OrderService → <span style="color: #f1b47f">Order (write)</span></div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <button type="button" aria-pressed="true" style="height: 30px; padding: 0 10px; background: #20262b; border: 1px solid #343b41; border-radius: 5px; font-size: 12px; cursor: pointer">Showing on map</button>
+        <button type="button" style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: 1px solid #252b30; border-radius: 5px; font-size: 12px; color: #9aa3a7; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8 V4 H4 V16 H8"></path></svg>Copy fix prompt</button>
+      </div>
+    </article>
+
+    <article style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #191e22; border: 1px solid #252b30; border-radius: 8px">
+      <span style="display: flex; align-items: center; gap: 6px; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #f98a89"><span style="width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b"></span>HIGH · WEBHOOK</span>
+      <h2 style="margin: 0; font-size: 13px; font-weight: 620; line-height: 1.35">Webhook signature is never verified</h2>
+      <p style="margin: 0; font-size: 12px; color: #9aa3a7">The Stripe webhook passes its signature header to WebhookService, but no path from the handler reaches stripe.webhooks.constructEvent.</p>
+      <div style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 11px; padding: 6px 8px; background: #0d1012; border: 1px solid #252b30; border-radius: 4px">webhook → WebhookService → <span style="color: #f1b47f">Payment (write)</span></div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <button type="button" aria-pressed="false" style="height: 30px; padding: 0 10px; background: transparent; border: 1px solid #343b41; border-radius: 5px; font-size: 12px; cursor: pointer">Show on map</button>
+        <button type="button" style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: 1px solid #252b30; border-radius: 5px; font-size: 12px; color: #9aa3a7; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8 V4 H4 V16 H8"></path></svg>Copy fix prompt</button>
+      </div>
+    </article>
+
+    <article style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #191e22; border: 1px solid #252b30; border-radius: 8px">
+      <span style="display: flex; align-items: center; gap: 6px; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #f1b47f"><span style="width: 6px; height: 6px; border-radius: 1px; background: #f5a25d"></span>MEDIUM · SECRETS</span>
+      <h2 style="margin: 0; font-size: 13px; font-weight: 620; line-height: 1.35">.env is not ignored by git</h2>
+      <p style="margin: 0; font-size: 12px; color: #9aa3a7">A .env file at the repository root isn't covered by .gitignore. One commit would publish every key in it.</p>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <button type="button" style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: 1px solid #252b30; border-radius: 5px; font-size: 12px; color: #9aa3a7; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8 V4 H4 V16 H8"></path></svg>Copy fix prompt</button>
+      </div>
+    </article>
+  </aside>
+
+  <main aria-label="Architecture map" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; overflow-x: auto">
+    <div style="min-width: 900px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 32px; padding-bottom: 8px; border-bottom: 1px solid #343b41">
+        <sc-for list="{{ lanes }}" as="lane" hint-placeholder-count="6">
+          <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #899398">{{ lane.name }}</span>
+        </sc-for>
+      </div>
+      <div style="position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 32px">
+        <svg viewBox="0 0 600 502" preserveAspectRatio="none" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 100%; height: 502px; overflow: visible">
+          <g fill="none" stroke-width="1.25" vector-effect="non-scaling-stroke">
+            <line x1="82.2" y1="122" x2="103.5" y2="294" stroke="#3a4248" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"></line>
+            <line x1="82.2" y1="208" x2="103.5" y2="294" stroke="#3a4248" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"></line>
+            <line x1="82.2" y1="36" x2="207" y2="208" stroke="#3a4248" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
+            <line x1="82.2" y1="122" x2="207" y2="122" stroke="#3a4248" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
+            <line x1="82.2" y1="208" x2="207" y2="36" stroke="#3a4248" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="122" x2="310.5" y2="36" stroke="#3a4248" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="208" x2="310.5" y2="208" stroke="#3a4248" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="294" x2="310.5" y2="294" stroke="#3a4248" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="380" x2="310.5" y2="380" stroke="#3a4248" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="36" x2="310.5" y2="122" stroke="#3a4248" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="122" x2="414" y2="122" stroke="#5c4632" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="294" x2="414" y2="122" stroke="#5c4632" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="466" x2="414" y2="122" stroke="#5c4632" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="208" x2="414" y2="208" stroke="#2d5357" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="380" x2="517.5" y2="380" stroke="#3a4248" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
+            <line x1="289.2" y1="36" x2="310.5" y2="36" stroke="#ff6b6b" stroke-width="2.5" vector-effect="non-scaling-stroke"></line>
+            <line x1="392.7" y1="36" x2="414" y2="36" stroke="#ff6b6b" stroke-width="2.5" vector-effect="non-scaling-stroke"></line>
+          </g>
+        </svg>
+        <sc-for list="{{ lanes }}" as="lane" hint-placeholder-count="6">
+          <div style="position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+            <sc-for list="{{ lane.cells }}" as="n" hint-placeholder-count="6">
+              <sc-if value="{{ n.empty }}" hint-placeholder-val="{{ true }}">
+                <div style="height: 72px"></div>
+              </sc-if>
+              <sc-if value="{{ n.full }}" hint-placeholder-val="{{ false }}">
+                <div style="{{ n.box }}">
+                  <span style="display: flex; align-items: center; gap: 6px; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: {{ n.kindColor }}"><span style="width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; background: {{ n.swatch }}"></span>{{ n.kind }}</span>
+                  <span style="font-size: 14px; font-weight: 650; line-height: 20px; font-stretch: 87.5%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ n.label }}</span>
+                  <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10.5px; color: #9aa3a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ n.sub }}</span>
+                  <sc-if value="{{ n.badge }}" hint-placeholder-val="{{ false }}">
+                    <span aria-label="{{ n.badgeLabel }}" style="{{ n.badgeStyle }}">{{ n.badgeText }}</span>
+                  </sc-if>
+                  <sc-if value="{{ n.step }}" hint-placeholder-val="{{ false }}">
+                    <span style="position: absolute; top: -9px; left: -9px; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #7aa7ff; color: #0d1012; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 11px; font-weight: 700">{{ n.stepText }}</span>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 18px; font-size: 11px; color: #899398">
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 20px; border-top: 1.5px solid #6a7378"></span>call</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 20px; border-top: 1.5px dashed #6a7378"></span>HTTP request</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 20px; border-top: 1.5px solid #f5a25d"></span>writes data</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 20px; border-top: 1.5px solid #47c9d6"></span>reads data</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 50%; background: #ff6b6b; color: #0d1012; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 10px">!</span>finding</span>
+      </div>
+    </div>
+  </main>
+
+  <aside aria-label="Component details" style="flex: 1 1 300px; max-width: 100%; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 18px; background: #13171a; border-left: 1px solid #252b30">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="display: flex; align-items: center; gap: 6px; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.08em; color: #7cdba3"><span style="width: 6px; height: 6px; border-radius: 2px; background: #58d68d"></span>API ROUTE · POST</span>
+      <h2 style="margin: 0; font-size: 22px; font-weight: 680; line-height: 1.15; font-stretch: 87.5%">Checkout</h2>
+      <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 11px; color: #9aa3a7">src/app/api/order/checkout/route.ts</span>
+      <p style="margin: 4px 0 0; font-size: 12.5px; color: #9aa3a7">Creates an order from the cart and starts payment.</p>
+      <button type="button" style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 10px; background: #191e22; border: 1px solid #343b41; border-radius: 5px; font-size: 12px; cursor: pointer">Open in editor</button>
+    </div>
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h3 style="margin: 0; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; font-weight: 400; letter-spacing: 0.16em; color: #899398">FINDINGS · 1</h3>
+      <div style="display: flex; gap: 8px; align-items: flex-start; padding: 10px; background: #302629; border: 1px solid #5a3436; border-radius: 6px">
+        <span style="width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%; background: #ff6b6b; color: #0d1012; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">!</span>
+        <span style="font-size: 12px">Public route writes orders without sign-in</span>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 6px">
+      <h3 style="margin: 0; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; font-weight: 400; letter-spacing: 0.16em; color: #899398">DEPENDS ON · 2</h3>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: #191e22; border: 1px solid #252b30; border-radius: 5px; font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 2px; background: #f5a25d"></span>OrderService</div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: #191e22; border: 1px solid #252b30; border-radius: 5px; font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 2px; background: #f5a25d"></span>PaymentRouter</div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 6px">
+      <h3 style="margin: 0; font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; font-weight: 400; letter-spacing: 0.16em; color: #899398">USED BY · 1</h3>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: #191e22; border: 1px solid #252b30; border-radius: 5px; font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 2px; background: #7aa7ff"></span>Order <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10.5px; color: #899398">/order/[id]</span></div>
+    </section>
+  </aside>
+</div>
+
+<footer aria-label="Change tape" style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: #13171a; border-top: 1px solid #252b30">
+  <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.16em; color: #899398">CHANGES</span>
+  <div style="flex: 1; height: 28px; display: flex; align-items: flex-end; gap: 3px; overflow: hidden">
+    <sc-for list="{{ ticksA }}" as="t" hint-placeholder-count="20">
+      <span style="{{ t.style }}"></span>
+    </sc-for>
+    <span style="{{ bandStyle }}">
+      <sc-for list="{{ ticksB }}" as="t" hint-placeholder-count="8">
+        <span style="{{ t.style }}"></span>
+      </sc-for>
+    </span>
+  </div>
+  <span style="font-family: 'Fragment Mono', ui-monospace, monospace; font-size: 10px; color: #899398">live · watching 41 files</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const MODE = 'health';
+    const C = { ui: ['#7aa7ff', '#95b7f8'], edge: ['#8b959a', '#a2aaac'], api: ['#58d68d', '#7cdba3'], svc: ['#f5a25d', '#f1b47f'], data: ['#47c9d6', '#6fd1d9'], ext: ['#e9c46a', '#e8cd88'], ai: ['#b79bff', '#c3aef8'] };
+    const N = (id, cat, kind, label, sub) => ({ id, cat, kind, label, sub });
+    const raw = [
+      ['UI', [N('home', 'ui', 'Page', 'Home', '/'), N('dashboard', 'ui', 'Page', 'Dashboard', '/dashboard'), N('orderPage', 'ui', 'Page', 'Order', '/order/[id]'), null, null, null]],
+      ['Edge', [null, null, null, N('middleware', 'edge', 'Middleware', 'middleware', '/dashboard, /order'), null, null]],
+      ['API', [N('checkout', 'api', 'POST', 'Checkout', '/api/order/checkout'), N('listOrders', 'api', 'GET', 'Orders', '/api/order'), N('books', 'api', 'GET', 'Books', '/api/book'), N('webhook', 'api', 'POST', 'Stripe webhook', '/api/stripe/webhook'), N('recommend', 'api', 'GET', 'Recommend', '/api/book/recommend'), null]],
+      ['Logic', [N('orderSvc', 'svc', 'Service', 'OrderService', 'order.service.ts'), N('payRouter', 'svc', 'Service', 'PaymentRouter', 'payment-router.service.ts'), N('catalog', 'svc', 'Service', 'CatalogService', 'catalog.service.ts'), N('webhookSvc', 'svc', 'Service', 'WebhookService', 'webhook.service.ts'), N('recommender', 'ai', 'AI service', 'Recommender', 'recommender.service.ts'), N('storeCredit', 'svc', 'Service', 'StoreCreditPayment', 'store-credit-payment.service.ts')]],
+      ['Data', [N('order', 'data', 'Model', 'Order', 'prisma · Order'), N('payment', 'data', 'Model', 'Payment', 'prisma · Payment'), N('book', 'data', 'Model', 'Book', 'prisma · Book'), N('customer', 'data', 'Model', 'Customer', 'prisma · Customer'), null, null]],
+      ['External', [N('stripe', 'ext', 'External', 'Stripe', 'stripe'), null, N('algolia', 'ext', 'External', 'Algolia', 'algoliasearch'), null, N('openai', 'ai', 'External · AI', 'OpenAI', 'openai'), null]]
+    ];
+    const cfg = {
+      health: { hl: ['checkout', 'orderSvc', 'order'], ring: '#ff6b6b', tint: '#302629', dim: 0.38, badges: { checkout: '!', webhook: '!' }, steps: {} },
+      ask: { hl: ['orderPage', 'checkout', 'orderSvc', 'order'], ring: '#7aa7ff', tint: '#232c38', dim: 0.32, badges: {}, steps: { orderPage: 1, checkout: 2, orderSvc: 3, order: 4 } },
+      recent: { hl: ['storeCredit', 'payRouter', 'payment', 'checkout'], ring: '#58d68d', tint: '#1f302d', dim: 0.5, badges: { storeCredit: '+', payRouter: '~', payment: '~', checkout: '~' }, steps: {} }
+    }[MODE];
+    const badgeBase = 'position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; color: #0d1012; font-family: \'Fragment Mono\', ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1;';
+    const badgeLook = { '!': ['#ff6b6b', '50%', 'Health finding'], '+': ['#58d68d', '2px', 'New in this session'], '~': ['#e9c46a', '2px', 'Changed in this session'] };
+    const lanes = raw.map(([name, cells]) => ({
+      name,
+      cells: cells.map((n) => {
+        if (!n) return { empty: true, full: false };
+        const on = cfg.hl.includes(n.id);
+        const b = cfg.badges[n.id];
+        const s = cfg.steps[n.id];
+        return {
+          ...n, empty: false, full: true,
+          kindColor: C[n.cat][1], swatch: C[n.cat][0],
+          box: 'height: 72px; box-sizing: border-box; padding: 10px 12px; border-radius: 7px; display: flex; flex-direction: column; justify-content: center; gap: 2px; position: relative; min-width: 0; background: ' + (on ? cfg.tint : '#191e22') + '; border: 1px solid ' + (on ? cfg.ring : '#252b30') + '; box-shadow: ' + (on ? '0 0 0 1px ' + cfg.ring : 'none') + '; opacity: ' + (on ? 1 : cfg.dim) + ';',
+          badge: !!b, badgeText: b || '', badgeLabel: b ? badgeLook[b][2] : '',
+          badgeStyle: b ? badgeBase + ' background: ' + badgeLook[b][0] + '; border-radius: ' + badgeLook[b][1] + ';' : '',
+          step: !!s, stepText: s ? String(s) : ''
+        };
+      })
+    }));
+    const tick = (h, c) => ({ style: 'width: 4px; flex-shrink: 0; border-radius: 1px; height: ' + h + 'px; background: ' + c + ';' });
+    const hs = [6, 10, 4, 14, 8, 5, 18, 7, 9, 4, 12, 6, 22, 8, 5, 10, 7, 16, 6, 9, 4, 11, 8, 6, 13, 5, 9, 7];
+    const cs = ['#e9c46a', '#e9c46a', '#58d68d', '#e9c46a', '#ff6b6b', '#e9c46a', '#58d68d'];
+    const ticksA = hs.slice(0, 20).map((h, i) => tick(h, cs[i % cs.length]));
+    const ticksB = [16, 24, 10, 20, 8, 14, 26, 12].map((h, i) => tick(h, i % 3 === 0 ? '#58d68d' : '#e9c46a'));
+    const bandStyle = MODE === 'recent'
+      ? 'display: flex; align-items: flex-end; gap: 3px; padding: 2px 6px 0; height: 28px; box-sizing: border-box; background: #1f302d; border-top: 2px solid #58d68d; border-radius: 2px;'
+      : 'display: flex; align-items: flex-end; gap: 3px; height: 28px;';
+    return { lanes, ticksA, ticksB, bandStyle };
+  }
+}
+</script>
+</body>
+</html>

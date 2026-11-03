@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 
-// The engine host is an ES module: @eyrie/storage loads node:sqlite with a
-// top-level await, which a CommonJS bundle cannot hold. Electron runs a
-// utility process from an .mjs file as ESM.
+// The engine host is an ES module. Electron runs a utility process from an
+// .mjs file as ESM. (@eyrie/storage loads node:sqlite with require, so the
+// engine also bundles to CommonJS for the desktop app's single-executable
+// `eyrie` command; this host simply stays ESM.)
 export default defineConfig({
   build: {
     target: 'node22',
