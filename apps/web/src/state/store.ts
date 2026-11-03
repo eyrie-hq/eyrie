@@ -96,6 +96,8 @@ export interface State {
   /** What the insight drawer currently points at on the map. */
   highlight: InsightHighlight | null;
   drawer: { open: boolean; tab: DrawerTab };
+  /** A row the drawer should open on mount: the Panel's deep-link into a tab. Consumed once. */
+  drawerSelection: { tab: DrawerTab; id: string } | null;
   /** The last health check: read by the Health tab, the top-bar counter and the Panel. */
   health: HealthSummaryView | null;
   healthLoading: boolean;
@@ -134,6 +136,7 @@ class Store {
     sequenceEntry: null,
     highlight: null,
     drawer: { open: false, tab: 'ask' },
+    drawerSelection: null,
     health: null,
     healthLoading: false,
     healthError: null,
@@ -197,6 +200,13 @@ class Store {
     if (this.state.highlight) this.set({ highlight: null });
   };
   openDrawer = (tab: DrawerTab) => this.set({ drawer: { open: true, tab } });
+  openDrawerSelection = (tab: DrawerTab, id: string) => this.set({ drawer: { open: true, tab }, drawerSelection: { tab, id } });
+  /** Reads and clears the pending drawer selection, if any. */
+  takeDrawerSelection = (): { tab: DrawerTab; id: string } | null => {
+    const selection = this.state.drawerSelection;
+    if (selection) this.set({ drawerSelection: null });
+    return selection;
+  };
   closeDrawer = () => {
     if (this.state.drawer.open) this.set({ drawer: { ...this.state.drawer, open: false } });
   };

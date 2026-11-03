@@ -70,10 +70,15 @@ typography:
     lineHeight: 1.4
 rounded:
   badge: "2px"
+  control-sm: "3px"
+  control: "4px"
+  control-lg: "5px"
+  input: "6px"
   node: "7px"
   card: "8px"
   panel: "12px"
   overlay: "14px"
+  pill: "999px"
 components:
   lens-option:
     backgroundColor: "{colors.ink-3}"
@@ -93,6 +98,12 @@ components:
     rounded: "6px"
     padding: "0 32px 0 32px"
     height: "32px"
+  inspector-row:
+    backgroundColor: "{colors.ink-1}"
+    textColor: "{colors.text}"
+    rounded: "6px"
+    padding: "8px 10px"
+    height: "40px"
   graph-node:
     backgroundColor: "{colors.ink-2}"
     textColor: "{colors.text}"
@@ -200,7 +211,7 @@ Depth is conveyed first by tonal surface shifts and thin borders, not broad drop
 
 ## Shapes
 
-The form language is compact and technical. Badges and ticks use 2px corners; 2D graph nodes use 7px; drawer finding and session cards use 8px; the mobile details panel uses 8px top corners; overlay silhouettes use 12–14px; dots are circular. Controls may use 4–6px corners, while category filters and connection-status indicators are intentionally pill-shaped. Three.js city blocks use crisp geometry and category-coloured outlines. Their roof-aligned custom React Flow labels are unframed by default, with a restrained neutral surface on hover or selection and 3px corners. Do not round every surface to the same radius.
+The form language is compact and technical. Badges and ticks use 2px corners; 2D graph nodes use 7px; the mobile details panel uses 8px top corners; overlay silhouettes use 12–14px; dots are circular. Controls step with size: 3px for glyphs, map labels, and small buttons, 4px for filters and buttons, 5px for inputs and grouped toolbars, 6px for search fields, segmented groups, and inspector rows. Count chips stay pill-shaped at 999px. Three.js city blocks use crisp geometry and category-coloured outlines. Their roof-aligned custom React Flow labels are unframed by default, with a restrained neutral surface on hover or selection and 3px corners. Do not round every surface to the same radius.
 
 ## Components
 
@@ -215,6 +226,8 @@ Category filters in the navbar are compact, unframed swatch controls with a shor
 ### Cards / Containers
 
 The details panel is an unshadowed `ink-1` surface with a one-pixel rule at its edge. On desktop it is 384px wide; on narrow viewports it sits at the bottom with an 8px top radius and a maximum height of `min(60dvh, calc(100dvh - 340px))`, preserving canvas space above the inspector. Sections remain in stable order so the user can scan purpose, source, calls, dependents, and symbols.
+
+The insight drawer tabs read as inspector rows: compact headers with a glyph rail, a semibold title, mono meta, and a chevron, each pushing open an evidence drawer inline with a grid-rows transition that honours reduced motion. Disclosure headers pair `aria-expanded` with `aria-controls`.
 
 ### Inputs / Fields
 

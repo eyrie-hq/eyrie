@@ -4,8 +4,19 @@
  * Answers are stored in knowledge.db when the server has one, with the model
  * that wrote them and the tool calls they made.
  */
-import { ask, type AiBackend, type AskResult, type AskTools, type ProjectKnowledge } from '@eyrie/knowledge';
+import { ask, createAiBackend, type AiBackend, type AskResult, type AskTools, type ProjectKnowledge } from '@eyrie/knowledge';
 import type { EyrieMcp } from './mcp.js';
+
+/**
+ * Which backend answers a question: the caller's pick wins, `auto` (or no
+ * pick) keeps the server default. Throws for a name Eyrie does not know.
+ * A pick works even when the server started without `--ai`: choosing is consent.
+ */
+export function resolveAskBackend(server: AiBackend | null | undefined, name: unknown): AiBackend | null {
+  if (name === undefined || name === null || name === 'auto') return server ?? null;
+  if (typeof name !== 'string' || !name) throw new Error('Pick a backend: auto, claude, codex, muse, or openai.');
+  return createAiBackend(name);
+}
 
 /** The Ask loop's tools, answered by an MCP server over the live engine. */
 export function mcpAskTools(mcp: EyrieMcp): AskTools {

@@ -143,7 +143,7 @@ function Details({ node }: { node: ArchNode }) {
                   <button
                     type="button"
                     onClick={() => {
-                      store.openDrawer('health');
+                      store.openDrawerSelection('health', f.id);
                       showFinding(f, nodes);
                     }}
                     className="group flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-ink-3"
@@ -167,7 +167,7 @@ function Details({ node }: { node: ArchNode }) {
                   <button
                     type="button"
                     onClick={() => {
-                      store.openDrawer('recent');
+                      store.openDrawerSelection('recent', String(session.id));
                       showSession(session, nodes);
                     }}
                     className="group flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-ink-3"

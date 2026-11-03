@@ -6,7 +6,7 @@ import type { GraphEvent, ServerMessage } from '@eyrie/core';
 import { findCommand, findEditor, startDetached } from '@eyrie/core/commands';
 import type { EngineBatch, GraphEngine } from '@eyrie/engine';
 import { commitView, type AiBackend, type ProjectKnowledge } from '@eyrie/knowledge';
-import { answerQuestion } from './ask.js';
+import { answerQuestion, resolveAskBackend } from './ask.js';
 import { runHealthCheck } from './check.js';
 import { EyrieMcp } from './mcp.js';
 import { recentSessions } from './recent.js';
@@ -149,12 +149,17 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       return json(res, 200, { backend: opts.ai?.name ?? null, questions: opts.knowledge?.store.askHistory(limit) ?? [] });
     }
     if (req.method === 'POST' && path === '/api/ask') {
-      const backend = opts.ai;
-      if (!backend) return json(res, 501, { error: 'AI is off. Start Eyrie with --ai to ask questions.' });
-      const body = (await readBody(req)) as { question?: string };
+      const body = (await readBody(req)) as { question?: string; backend?: string };
       if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 2000) {
         return json(res, 400, { error: 'Ask a question of at most 2000 characters.' });
       }
+      let backend: AiBackend | null;
+      try {
+        backend = resolveAskBackend(opts.ai ?? null, body.backend);
+      } catch (err) {
+        return json(res, 400, { error: (err as Error).message });
+      }
+      if (!backend) return json(res, 501, { error: 'AI is off. Start Eyrie with --ai, or pick a backend.' });
       try {
         return json(res, 200, await answerQuestion({ mcp: askMcp(), knowledge: opts.knowledge ?? null, backend, question: body.question, log }));
       } catch (err) {

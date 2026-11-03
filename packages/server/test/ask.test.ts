@@ -11,7 +11,35 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GraphEngine } from '@eyrie/engine';
 import type { AiBackend } from '@eyrie/knowledge';
 import { EyrieMcp } from '../src/mcp.js';
-import { answerQuestion } from '../src/ask.js';
+import { answerQuestion, resolveAskBackend } from '../src/ask.js';
+
+describe('resolveAskBackend', () => {
+  const server = { name: 'server-default' } as AiBackend;
+
+  it('keeps the server backend on auto or no pick', () => {
+    expect(resolveAskBackend(server, undefined)).toBe(server);
+    expect(resolveAskBackend(server, 'auto')).toBe(server);
+    expect(resolveAskBackend(null, 'auto')).toBeNull();
+  });
+
+  it('builds the picked backend, even with no server default', () => {
+    const names: [pick: string, built: string][] = [
+      ['claude', 'claude-code'],
+      ['codex', 'codex'],
+      ['muse', 'muse'],
+      ['openai', 'openai'],
+    ];
+    for (const [pick, built] of names) {
+      expect(resolveAskBackend(null, pick)?.name).toBe(built);
+    }
+    expect(resolveAskBackend(server, 'codex')).not.toBe(server);
+  });
+
+  it('refuses unknown or mistyped picks', () => {
+    expect(() => resolveAskBackend(server, 'metamate')).toThrow('Unknown AI backend');
+    expect(() => resolveAskBackend(server, 42)).toThrow('Pick a backend');
+  });
+});
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/bookstore-app', import.meta.url));
 

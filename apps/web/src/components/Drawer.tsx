@@ -30,23 +30,25 @@ export function Drawer() {
   };
   return (
     <aside className="insight-drawer" aria-label="Insights">
-      <div className="insight-tabs" role="tablist" aria-label="Insights">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            id={`insight-tab-${t.id}`}
-            aria-selected={drawer.tab === t.id}
-            aria-controls="insight-panel"
-            tabIndex={drawer.tab === t.id ? 0 : -1}
-            className={drawer.tab === t.id ? 'is-active' : undefined}
-            onClick={() => store.setDrawerTab(t.id)}
-            onKeyDown={onKeyDown}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="insight-tabs">
+        <div role="tablist" aria-label="Insights">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`insight-tab-${t.id}`}
+              aria-selected={drawer.tab === t.id}
+              aria-controls="insight-panel"
+              tabIndex={drawer.tab === t.id ? 0 : -1}
+              className={drawer.tab === t.id ? 'is-active' : undefined}
+              onClick={() => store.setDrawerTab(t.id)}
+              onKeyDown={onKeyDown}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
         <button type="button" className="insight-close" aria-label="Close insights" title="Close (Esc)" onClick={() => store.closeDrawer()}>
           <X size={14} aria-hidden="true" />
         </button>

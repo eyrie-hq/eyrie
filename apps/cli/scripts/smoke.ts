@@ -28,6 +28,8 @@ if (tarball) {
   const install = mkdtempSync(join(tmpdir(), 'eyrie-install-'));
   console.log(`Installing ${tarball} into ${install}`);
   execFileSync('npm', ['install', '--no-audit', '--no-fund', '--prefix', install, tarball], {
+    // Windows resolves npm to npm.cmd only through the shell.
+    shell: process.platform === 'win32',
     stdio: 'inherit',
     env: { ...process.env, npm_config_cache: join(install, 'npm-cache') },
   });
@@ -37,7 +39,12 @@ if (tarball) {
 console.log(`Starting ${command} ${[...prefix, 'mcp', repo].join(' ')}`);
 
 // A fresh Eyrie home every run: the smoke test never touches the user's cache.
-const child = spawn(command, [...prefix, 'mcp', repo], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, EYRIE_HOME: mkdtempSync(join(tmpdir(), 'eyrie-smoke-')) } });
+const child = spawn(command, [...prefix, 'mcp', repo], {
+  // The installed eyrie is a .cmd shim on Windows, which only runs through the shell.
+  shell: process.platform === 'win32',
+  stdio: ['pipe', 'pipe', 'inherit'],
+  env: { ...process.env, EYRIE_HOME: mkdtempSync(join(tmpdir(), 'eyrie-smoke-')) },
+});
 const fail = (message: string): never => {
   child.kill();
   console.error(`smoke: ${message}`);

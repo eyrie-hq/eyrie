@@ -45,7 +45,7 @@ export function TopBar() {
       </div>
       <div className="navbar-context">
         <div className="navbar-repo-context">
-          {repo?.frameworks.length ? <span className="navbar-frameworks">{repo.frameworks.join(' · ')}</span> : null}
+          <Insights />
           {stats ? (
             <dl className="navbar-stats">
               <Stat label="files" value={stats.files} />
@@ -54,7 +54,7 @@ export function TopBar() {
               <Stat label="links" value={edges.length} />
             </dl>
           ) : null}
-          <Insights />
+          {repo?.frameworks.length ? <span className="navbar-frameworks">{repo.frameworks.join(' · ')}</span> : null}
         </div>
         <Filters present={present} />
       </div>
@@ -101,8 +101,8 @@ function Insights() {
           {b.tab === 'health' && count > 0 ? <TriangleAlert size={12} aria-hidden="true" className="insight-alert" /> : null}
           {b.tab === 'recent' && sessions > 0 ? <span className="insight-dot" aria-hidden="true" /> : null}
           {b.label}
-          {b.tab === 'health' && health ? <span className="insight-count">{count}</span> : null}
-          {b.tab === 'recent' && recent ? <span className="insight-count">{sessions}</span> : null}
+          {b.tab === 'health' && health ? <span className={count > 0 ? 'insight-count alert' : 'insight-count quiet'}>{count}</span> : null}
+          {b.tab === 'recent' && recent ? <span className="insight-count quiet">{sessions}</span> : null}
           {b.key ? <kbd>{b.key}</kbd> : null}
         </button>
       ))}

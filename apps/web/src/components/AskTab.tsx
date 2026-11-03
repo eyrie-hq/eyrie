@@ -1,5 +1,6 @@
 import { archPath } from '@eyrie/lens';
-import { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { timeAgo } from '../projects/format.js';
 import { api, store, useStore } from '../state/store';
 
@@ -29,22 +30,27 @@ interface AskRecordView extends AskResultView {
   createdAt: number;
 }
 
-interface Current {
-  question: string;
-  result: AskResultView;
-}
-
 const BACKEND_LABEL: Record<string, string> = { 'claude-code': 'Claude', claude: 'Claude', codex: 'Codex', muse: 'Muse', openai: 'OpenAI', scripted: 'Scripted' };
+const BACKENDS = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'claude', label: 'Claude' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'muse', label: 'Muse' },
+  { id: 'openai', label: 'OpenAI' },
+];
 
-/** Ask the map: a question answered by a model that only used Eyrie's read-only tools. */
+const recordKey = (record: AskRecordView): string => (record.id === null ? `live-${record.question}` : String(record.id));
+
+/** Ask the map: answers as inspector rows, each openable onto its evidence and map path. */
 export function AskTab() {
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
-  const [current, setCurrent] = useState<Current | null>(null);
-  const [history, setHistory] = useState<AskRecordView[]>([]);
-  const [backend, setBackend] = useState<string | null>(null);
+  const [current, setCurrent] = useState<AskRecordView | null>(null);
+  const [history, setHistory] = useState<AskRecordView[] | null>(null);
+  const [serverBackend, setServerBackend] = useState<string | null>(null);
+  const [pick, setPick] = useState('auto');
   const [failed, setFailed] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const edges = useStore((s) => s.edges);
   const nodes = useStore((s) => s.nodes);
@@ -54,7 +60,7 @@ export function AskTab() {
     api<{ backend: string | null; questions: AskRecordView[] }>('/api/ask?limit=20')
       .then((res) => {
         if (!alive) return;
-        setBackend(res.backend);
+        setServerBackend(res.backend);
         setHistory(res.questions);
       })
       .catch((err: unknown) => alive && setFailed((err as Error).message));
@@ -63,9 +69,9 @@ export function AskTab() {
     };
   }, []);
 
-  // The current answer points at the map; leaving the tab takes it down, unless another tab points by then.
+  // The open answer points at the map; leaving the tab takes it down, unless another tab points by then.
   useEffect(() => {
-    const steps = current?.result.answer?.steps;
+    const steps = current?.answer?.steps;
     if (current && steps?.length) showSteps(current.question, steps);
     return () => {
       if (store.get().highlight?.source === 'ask') store.clearHighlight();
@@ -98,14 +104,13 @@ export function AskTab() {
     abort.current = controller;
     setAsking(true);
     setFailed(null);
-    setCurrent(null);
     try {
-      const result = await api<AskResultView>('/api/ask', { method: 'POST', body: JSON.stringify({ question: q }), signal: controller.signal });
+      const result = await api<AskResultView>('/api/ask', { method: 'POST', body: JSON.stringify({ question: q, backend: pick }), signal: controller.signal });
       setQuestion('');
-      setCurrent({ question: q, result });
       const res = await api<{ backend: string | null; questions: AskRecordView[] }>('/api/ask?limit=20');
-      setBackend(res.backend);
+      setServerBackend(res.backend);
       setHistory(res.questions);
+      setCurrent(res.questions.find((r) => r.id === result.id) ?? { ...result, question: q, createdAt: Date.now() });
     } catch (err) {
       if ((err as Error).name !== 'AbortError') setFailed((err as Error).message);
     } finally {
@@ -114,8 +119,13 @@ export function AskTab() {
     }
   };
 
+  const open = (record: AskRecordView | null) => {
+    setCurrent(record);
+    if (!record && store.get().highlight?.source === 'ask') store.clearHighlight();
+  };
+
   const replay = () => {
-    const steps = current?.result.answer?.steps;
+    const steps = current?.answer?.steps;
     if (!current || !steps?.length) return;
     const cited = steps.flatMap((s) => s.componentIds).filter((id) => nodes.has(id));
     const from = cited[0]!;
@@ -125,20 +135,33 @@ export function AskTab() {
     store.select(from, true);
   };
 
-  const copy = async () => {
-    const answer = current?.result.answer;
-    if (!current || !answer) return;
-    const text = `${current.question}\n\n${answer.answer}\n\n${answer.steps.map((s, i) => `${i + 1}. ${s.text}`).join('\n')}`;
+  const copy = async (record: AskRecordView) => {
+    const answer = record.answer;
+    if (!answer) return;
+    const key = recordKey(record);
+    const text = `${record.question}\n\n${answer.answer}\n\n${answer.steps.map((s, i) => `${i + 1}. ${s.text}`).join('\n')}`;
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopied(key);
+      setTimeout(() => setCopied((id) => (id === key ? null : id)), 1500);
     } catch {
       /* clipboard unavailable */
     }
   };
 
+  const onPickKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = BACKENDS.findIndex((b) => b.id === pick);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? BACKENDS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + BACKENDS.length) % BACKENDS.length;
+    setPick(BACKENDS[next]!.id);
+    (event.currentTarget.parentElement?.children[next] as HTMLButtonElement)?.focus();
+  };
+
   const labelOf = (id: string) => nodes.get(id)?.label ?? id;
+  const autoLabel = serverBackend ? `Auto (${BACKEND_LABEL[serverBackend] ?? serverBackend})` : 'Auto';
+  const asked = history ?? [];
+  const rows = current && !asked.some((h) => h.id === current.id) ? [current, ...asked] : asked;
 
   return (
     <div className="ask-tab">
@@ -152,8 +175,8 @@ export function AskTab() {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder={backend ? 'Where does checkout write?' : 'Start Eyrie with --ai to ask questions'}
-            disabled={!backend || asking}
+            placeholder={serverBackend || pick !== 'auto' ? 'Where does checkout write?' : 'Pick who answers, below'}
+            disabled={asking}
             maxLength={2000}
             autoComplete="off"
           />
@@ -162,11 +185,28 @@ export function AskTab() {
               Stop
             </button>
           ) : (
-            <button type="submit" disabled={!backend || !question.trim()}>
+            <button type="submit" disabled={!question.trim()}>
               Ask
             </button>
           )}
         </div>
+        <div className="ask-backends" role="radiogroup" aria-label="Who answers">
+          {BACKENDS.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-checked={pick === b.id}
+              tabIndex={pick === b.id ? 0 : -1}
+              title={b.id === 'auto' ? `Server default${serverBackend ? `: ${BACKEND_LABEL[serverBackend] ?? serverBackend}` : ' (none set)'}` : `Answer with ${b.label}`}
+              onClick={() => setPick(b.id)}
+              onKeyDown={onPickKeyDown}
+            >
+              {b.id === 'auto' ? autoLabel : b.label}
+            </button>
+          ))}
+        </div>
+        {!serverBackend && pick === 'auto' && history !== null ? <p className="ask-off">No AI backend configured — pick one above, or start Eyrie with --ai.</p> : null}
       </form>
 
       {failed ? (
@@ -176,78 +216,82 @@ export function AskTab() {
       ) : null}
       {asking ? (
         <p className="insight-progress" role="status">
-          Asking the map…
+          {BACKEND_LABEL[pick] ?? 'The model'} is reading the map…
         </p>
       ) : null}
 
-      {current ? (
-        <article className="ask-answer">
-          <h3>{current.question}</h3>
-          {current.result.status === 'ok' && current.result.answer ? (
-            <>
-              <p className="ask-text">{current.result.answer.answer}</p>
-              <ol className="ask-steps">
-                {current.result.answer.steps.map((s, i) => (
-                  <li key={i}>
-                    <button type="button" className="ask-step" onClick={() => showSteps(current.question, [s])} title="Show this step on the map">
-                      <span className="ask-step-no">{i + 1}</span>
-                      <span>
-                        {s.text} {s.componentIds.map((id) => labelOf(id)).join(' › ')}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </>
-          ) : (
-            <p className="insight-error" role="alert">
-              {current.result.status === 'rejected' ? `Rejected: ${current.result.error}` : (current.result.error ?? 'The model did not answer.')}
-            </p>
-          )}
-          <p className="ask-byline">
-            answered by {current.result.model ?? BACKEND_LABEL[current.result.backend] ?? current.result.backend} · {current.result.calls.length} tool calls
-          </p>
-          <div className="ask-actions">
-            {current.result.status === 'ok' && current.result.answer?.steps.length ? (
-              <button type="button" onClick={replay}>
-                Replay path
-              </button>
-            ) : null}
-            {current.result.status === 'ok' ? <button type="button" onClick={copy}>{copied ? 'Copied' : 'Copy answer'}</button> : null}
-            <details className="ask-calls">
-              <summary>{current.result.calls.length} tool calls</summary>
-              <ol>
-                {current.result.calls.map((c, i) => (
-                  <li key={i}>
-                    <code>{c.name}</code> {Object.values(c.args ?? {}).filter((v) => typeof v === 'string' || typeof v === 'number').join(' · ')}
-                  </li>
-                ))}
-              </ol>
-            </details>
-          </div>
-        </article>
-      ) : null}
-
-      {history.length ? (
-        <section className="ask-history" aria-label="Earlier questions">
-          <h4>Earlier questions</h4>
-          <ul>
-            {history.map((q) => (
-              <li key={q.id}>
+      {rows.length ? (
+        <ul className="insp-list">
+          {rows.map((record) => {
+            const isOpen = current?.id != null ? current.id === record.id : current?.question === record.question && record.id === null;
+            const bodyId = `ask-body-${record.id ?? 'live'}`;
+            return (
+              <li key={recordKey(record)} className="insp-item" data-open={isOpen}>
                 <button
                   type="button"
-                  className={current?.result.id === q.id ? 'is-active' : undefined}
-                  onClick={() => setCurrent({ question: q.question, result: q })}
-                  title={new Date(q.createdAt).toLocaleString()}
+                  className="insp-head"
+                  aria-expanded={isOpen}
+                  aria-controls={bodyId}
+                  onClick={() => open(isOpen ? null : record)}
+                  title={new Date(record.createdAt).toLocaleString()}
                 >
-                  <span className={`ask-status ${q.status}`} aria-label={q.status} />
-                  <span className="ask-history-q">{q.question}</span>
-                  <time dateTime={new Date(q.createdAt).toISOString()}>{timeAgo(q.createdAt, Date.now())}</time>
+                  <span className={`ask-status ${record.status}`} role="img" aria-label={record.status} />
+                  <span className="insp-title">{record.question}</span>
+                  <span className="insp-meta">
+                    {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · <time dateTime={new Date(record.createdAt).toISOString()}>{timeAgo(record.createdAt, Date.now())}</time>
+                  </span>
+                  <ChevronDown size={14} className="insp-chevron" aria-hidden="true" />
                 </button>
+                <div className="insp-body" id={bodyId}>
+                  <div>
+                    {record.status === 'ok' && record.answer ? (
+                      <>
+                        <p className="ask-text">{record.answer.answer}</p>
+                        <ol className="ask-steps">
+                          {record.answer.steps.map((s, i) => (
+                            <li key={i}>
+                              <button type="button" className="ask-step" onClick={() => showSteps(record.question, [s])} title="Show this step on the map">
+                                <span className="ask-step-no">{i + 1}</span>
+                                <span>
+                                  {s.text} {s.componentIds.map((id) => labelOf(id)).join(' › ')}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                      </>
+                    ) : (
+                      <p className="insight-error" role="alert">
+                        {record.status === 'rejected' ? `Rejected: ${record.error}` : (record.error ?? 'The model did not answer.')}
+                      </p>
+                    )}
+                    <p className="ask-byline">
+                      answered by {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · {record.calls.length} tool calls
+                    </p>
+                    <div className="ask-actions">
+                      {record.status === 'ok' && record.answer?.steps.length ? <button type="button" onClick={replay}>Replay path</button> : null}
+                      {record.status === 'ok' ? <button type="button" onClick={() => copy(record)}>{copied === recordKey(record) ? 'Copied' : 'Copy answer'}</button> : null}
+                      <details className="ask-calls">
+                        <summary>{record.calls.length} tool calls</summary>
+                        <ol>
+                          {record.calls.map((c, i) => (
+                            <li key={i}>
+                              <code>{c.name}</code> {Object.values(c.args ?? {}).filter((v) => typeof v === 'string' || typeof v === 'number').join(' · ')}
+                            </li>
+                          ))}
+                        </ol>
+                      </details>
+                    </div>
+                  </div>
+                </div>
               </li>
-            ))}
-          </ul>
-        </section>
+            );
+          })}
+        </ul>
+      ) : history === null && !failed ? (
+        <p className="insight-empty">Loading questions…</p>
+      ) : !asking && !failed ? (
+        <p className="insight-empty">No questions yet. Ask where something lives, what would break, or how a request flows.</p>
       ) : null}
     </div>
   );
