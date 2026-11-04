@@ -2,10 +2,11 @@ name: Release
 
 # A v* tag builds the desktop app on each platform it ships for, each on its own kind of
 # runner, checks that each build indexes the fixture as the engine does (and that its
-# bundled `eyrie` command answers over MCP), publishes @eyrie-hq/cli to npm, and attaches
-# the installers, SHA256SUMS and build provenance to a draft GitHub release. The GitHub
-# release stays a draft: a person reviews it and publishes it. The npm publish needs a
-# trusted-publishing or token secret, NPM_TOKEN, on the repository.
+# bundled `eyrie` command answers over MCP), and attaches the installers, SHA256SUMS and
+# build provenance to a draft GitHub release. The GitHub release stays a draft: a person
+# reviews it and publishes it.
+#
+# Publishing @eyrie-hq/cli to npm is held back; see the `npm` job below.
 #
 # Pull requests that touch the desktop app or the CLI run the same builds and checks
 # without making a release, and keep the installers as workflow artifacts for a week,
@@ -136,7 +137,12 @@ jobs:
     # One package serves every platform (no native modules), so one publish
     # covers all five builds. Pre-releases go to the `next` tag; releases to
     # `latest`. The tarball is installed and checked before it is published.
-    if: startsWith(github.ref, 'refs/tags/')
+    #
+    # Held back until the npm side exists: the @eyrie-hq scope has not been created, so
+    # there is no token to publish with. Desktop builds ship without it. To turn this job
+    # back on, create the scope, add an NPM_TOKEN with write access to it, and set the
+    # repository variable PUBLISH_NPM to `true`.
+    if: startsWith(github.ref, 'refs/tags/') && vars.PUBLISH_NPM == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

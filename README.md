@@ -106,7 +106,7 @@ Each agent starts its own `eyrie mcp` process, with its own engine, named per pr
 | Source | Use it as | Notes |
 | --- | --- | --- |
 | The desktop app | `eyrie` | A project's ⋯ menu → **Connect Coding Agents** → **Install eyrie Command…** copies it to `~/.eyrie/bin` (`%APPDATA%\Eyrie\bin` on Windows), where it survives app updates. The same menu connects **Claude Code**, **Codex**, **Gemini CLI** or **Cursor** to that project for you, after showing you the exact command it will run |
-| npm | `npx -y @eyrie-hq/cli` | Needs Node.js 22.13 or newer; one package serves every platform. **Not on npm yet:** the publish runs on the next version tag |
+| npm | `npx -y @eyrie-hq/cli` | Needs Node.js 22.13 or newer; one package serves every platform. **Not on npm yet:** publishing is held back to a later release |
 | A source checkout | `pnpm --silent --dir /path/to/eyrie eyrie` | `pnpm --silent` keeps pnpm's own output off the protocol stream |
 
 **Claude Code** and **Codex** have the same one-line setup:
@@ -394,7 +394,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - Outside JavaScript, what a dynamic language decides at run time is not followed: Ruby metaprogramming, PHP magic methods, Python `getattr`, Lua metatables and dynamic `require()`, DI containers configured outside the code, and Rust macro bodies (such as `sqlx::query!`).
 - A frontend that calls the backend through a generated API client (OpenAPI SDKs) shows no HTTP links to the backend's routes; only direct `fetch` / `axios` calls are matched.
 - The desktop builds are not signed by Apple or Microsoft, so each system warns the first time Eyrie opens, and there are no automatic updates yet.
-- **`@eyrie-hq/cli` is not on npm yet.** The publish runs on a version tag and that tag has not been pushed, so the `npx -y @eyrie-hq/cli` lines above do not work today: use the `eyrie` command the desktop app installs, or a source checkout.
+- **`@eyrie-hq/cli` is not on npm yet.** The desktop builds ship first and the npm publish is held back to a later release, so the `npx -y @eyrie-hq/cli` lines above do not work today: use the `eyrie` command the desktop app installs, or a source checkout.
 - **The health check is eight rules, not a scanner.** It finds what those rules describe and nothing else, and it only sees what the parser resolved: a guard it cannot follow (a framework's own middleware, a DI container, an import it could not resolve) reads as no guard. Its false-positive rate has been measured on `fixtures/bookstore-app` (4 findings, all true) and on Eyrie itself (9, none in production code); a run over a large third-party repository is still open.
 - **Ask needs a model.** It is off until you pick a backend, each backend needs its own CLI signed in (or an API key), and answers are only as good as the questions the tools can answer — it cannot read your code, by design. The ten-question eval in `scripts/ask-eval/` validates the question set; scores from live models are not recorded yet.
 - **Recent work only sees what an agent reports.** An agent that never calls `record_intent` leaves no session, and saves made outside one are still on the change tape but belong to nobody. Session-level attribution without the agent's help needs editor or hook integration, which does not exist yet.
