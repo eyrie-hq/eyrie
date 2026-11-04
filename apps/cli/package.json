@@ -1,6 +1,6 @@
 {
   "name": "@eyrie-hq/cli",
-  "version": "0.1.0-rc.2",
+  "version": "0.2.0",
   "description": "Eyrie command line: index a repository and open its live architecture map, or serve it to coding agents over MCP",
   "type": "module",
   "license": "AGPL-3.0-only",

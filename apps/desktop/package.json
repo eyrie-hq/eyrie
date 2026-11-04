@@ -1,7 +1,7 @@
 {
   "name": "@eyrie/desktop",
   "productName": "Eyrie",
-  "version": "0.1.0-rc.2",
+  "version": "0.2.0",
   "private": true,
   "description": "Eyrie desktop app: an Electron shell that runs the engine locally and shows its UI",
   "type": "module",
