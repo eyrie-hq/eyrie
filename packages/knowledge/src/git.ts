@@ -44,6 +44,15 @@ function git(cwd: string, args: string[]): Promise<string> {
   });
 }
 
+/** Whether `path` (repo-relative) is tracked by git. False outside a work tree. */
+export async function isTracked(dir: string, path: string): Promise<boolean> {
+  try {
+    return (await git(dir, ['ls-files', '--error-unmatch', '--', path])).trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** The commit HEAD points at, or null when `dir` is not in a git work tree or has no commits. */
 export async function headCommit(dir: string): Promise<string | null> {
   try {
@@ -145,9 +154,20 @@ const AGENTS: [RegExp, string][] = [
   [/\bcopilot\b/i, 'Copilot'],
   [/\bcursor\b|@cursor\.(com|sh)$/i, 'Cursor'],
   [/\bgemini\b|\bjules\b|\bantigravity\b/i, 'Gemini'],
+  [/\bmuse\b/i, 'Muse'],
   [/\bdevin\b/i, 'Devin'],
   [/\baider\b/i, 'Aider'],
 ];
+
+/**
+ * The canonical agent for an MCP client name (`claude-code` → `Claude`), so
+ * sessions recorded over MCP match the agents commits name. Unknown clients
+ * keep their own name and simply never match a commit.
+ */
+export function agentOfClient(name: string): string {
+  for (const [pattern, agent] of AGENTS) if (pattern.test(name)) return agent;
+  return name;
+}
 
 /** The coding agents a commit names as its author or co-authors, e.g. from `Co-Authored-By: Claude …`. */
 export function agentsOf(commit: Pick<GitCommit, 'authorName' | 'authorEmail' | 'coAuthors'>): string[] {

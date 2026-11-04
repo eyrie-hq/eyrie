@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ArchEdge, ArchNode, CodeNodeKind } from '@eyrie/core';
 import { focusSet, impactOf, type Impact } from '../graph/analysis';
 import { useLensGraph } from '../graph/useLensGraph';
+import { showFinding } from '../lib/findings';
+import { noteByline, showSession, type SessionNoteView, type SessionView } from '../lib/sessions';
 import { KIND_LABEL, LANE_LABEL, catClass, edgeVerbs, isBroken, kindLabel, systemPart } from '../graph/vocabulary';
 import { api, store, useStore, type FocusMode } from '../state/store';
 
@@ -57,6 +59,8 @@ function Details({ node }: { node: ArchNode }) {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const focus = useStore((s) => s.focus);
+  const health = useStore((s) => s.health);
+  const recent = useStore((s) => s.recent);
   const frames = useStore((s) => s.frames.length);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [preview, setPreview] = useState<{ file: string; line: number; end?: number } | null>(null);
@@ -74,6 +78,21 @@ function Details({ node }: { node: ArchNode }) {
 
   const outgoing = useMemo(() => [...edges.values()].filter((e) => e.source === node.id), [edges, node.id]);
   const incoming = useMemo(() => [...edges.values()].filter((e) => e.target === node.id), [edges, node.id]);
+  const findings = useMemo(() => health?.findings.filter((f) => f.componentIds.includes(node.id)) ?? [], [health, node.id]);
+  const touchedBy = useMemo(() => {
+    const out: { session: SessionView; mark: string; note: SessionNoteView | undefined }[] = [];
+    for (const session of recent?.sessions ?? []) {
+      const mark = session.changes.added.some((c) => c.id === node.id) ? '+' : session.changes.changed.some((c) => c.id === node.id) ? '~' : session.changes.removed.some((c) => c.id === node.id) ? '−' : null;
+      if (!mark) continue;
+      out.push({ session, mark, note: session.notes.find((n) => n.component === node.id && n.status === 'ok') });
+    }
+    return out.slice(0, 3);
+  }, [recent, node.id]);
+
+  useEffect(() => {
+    if (!store.get().health && !store.get().healthLoading) void store.loadHealth();
+    if (!store.get().recent && !store.get().recentLoading) void store.loadRecent();
+  }, []);
   const down = useMemo(() => impactOf(nodes, focusSet(edges.values(), node.id, 'downstream')), [nodes, edges, node.id]);
   const up = useMemo(() => impactOf(nodes, focusSet(edges.values(), node.id, 'upstream')), [nodes, edges, node.id]);
 
@@ -113,6 +132,66 @@ function Details({ node }: { node: ArchNode }) {
             {node.meta?.summaryFrom === 'generated' ? (
               <p className="mt-2 text-[11.5px] text-faint">Generated from the code. Add a doc comment to the main export to describe it in your own words.</p>
             ) : null}
+          </Section>
+        ) : null}
+
+        {findings.length ? (
+          <Section title={`Findings · ${findings.length}`}>
+            <ul className="flex flex-col gap-1">
+              {findings.map((f) => (
+                <li key={f.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      store.openDrawerSelection('health', f.id);
+                      showFinding(f, nodes);
+                    }}
+                    className="group flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-ink-3"
+                    title={f.evidence}
+                  >
+                    <span className={`health-dot ${f.severity} mt-1 shrink-0`} aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] text-text">{f.title}</span>
+                    <span className="shrink-0 font-mono text-[10px] tracking-wider text-faint uppercase">{f.severity}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        {touchedBy.length ? (
+          <Section title="Changed in session">
+            <ul className="flex flex-col gap-3">
+              {touchedBy.map(({ session, mark, note }) => (
+                <li key={session.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      store.openDrawerSelection('recent', String(session.id));
+                      showSession(session, nodes);
+                    }}
+                    className="group flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-ink-3"
+                    title={session.task}
+                  >
+                    <span className={`shrink-0 font-mono text-[12px] font-bold ${mark === '+' ? 'text-new' : mark === '~' ? 'text-modified' : 'text-removed'}`} aria-hidden="true">
+                      {mark}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] text-text">
+                      {session.agent} · {session.task}
+                    </span>
+                  </button>
+                  {note?.note ? (
+                    <p className="mt-1 px-1.5 text-[12px] leading-relaxed text-dim">{note.note}</p>
+                  ) : null}
+                  {note ? (
+                    <p className="mt-0.5 px-1.5 font-mono text-[10.5px] text-faint">
+                      AI note · {noteByline(note)}
+                      {note.files[0] ? ` · cites ${note.files[0].split('/').pop()}` : ''}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           </Section>
         ) : null}
 

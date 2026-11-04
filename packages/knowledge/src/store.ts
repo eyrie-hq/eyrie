@@ -6,16 +6,20 @@
  */
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { AskAnswer, AskStatus, AskToolCall } from './ask.js';
 import type { CommitFile } from './git.js';
 
 // node:sqlite prints an ExperimentalWarning on load; silence it the same way @eyrie/storage does.
+// Loaded with getBuiltinModule (not a top-level await) so this module also
+// bundles to CommonJS: the desktop app's single-executable `eyrie` command is
+// a CJS snapshot, where neither await nor import.meta exists.
 const emitWarning = process.emitWarning;
 process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
   const text = typeof warning === 'string' ? warning : warning.message;
   if (text.includes('SQLite')) return;
   return (emitWarning as (...a: unknown[]) => void).call(process, warning, ...rest);
 }) as typeof process.emitWarning;
-const { DatabaseSync } = await import('node:sqlite');
+const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
 process.emitWarning = emitWarning;
 
 type Database = InstanceType<typeof DatabaseSync>;
@@ -71,6 +75,76 @@ export interface AnalysisRecord {
   usage: Record<string, unknown> | null;
 }
 
+export interface AskRecord {
+  id: number;
+  question: string;
+  backend: string;
+  model: string | null;
+  createdAt: number;
+  status: AskStatus;
+  answer: AskAnswer | null;
+  calls: AskToolCall[];
+  error: string | null;
+  usage: Record<string, unknown> | null;
+}
+
+/** A component as a session saw it: ids are stable, but a removed component's labels are the last seen. */
+export interface SessionComponent {
+  id: string;
+  label: string;
+  kind: string;
+  lane: string;
+}
+
+export interface SessionLink {
+  source: string;
+  target: string;
+  from: string;
+  to: string;
+  kinds: string[];
+}
+
+/** The `recent_changes` window of a session, aggregated at its end. */
+export interface SessionChanges {
+  files: { file: string; change: string }[];
+  added: SessionComponent[];
+  changed: SessionComponent[];
+  removed: SessionComponent[];
+  linksAdded: SessionLink[];
+  linksRemoved: SessionLink[];
+}
+
+export interface SessionRecord {
+  id: number;
+  task: string;
+  summary: string | null;
+  /** Canonical agent name from the MCP client info, e.g. `Claude`. */
+  agent: string;
+  startedAt: number;
+  endedAt: number | null;
+  startSeq: number;
+  endSeq: number | null;
+  changes: SessionChanges;
+}
+
+export type SessionNoteStatus = 'ok' | 'failed' | 'rejected';
+
+/** An AI note on one changed component: how the change serves the session's task. A note explains; it never becomes a fact. */
+export interface SessionNote {
+  id: number;
+  sessionId: number;
+  component: string;
+  label: string;
+  backend: string;
+  model: string | null;
+  createdAt: number;
+  status: SessionNoteStatus;
+  note: string | null;
+  /** Touched files the note cites. */
+  files: string[];
+  error: string | null;
+}
+
 const MIGRATIONS: string[] = [
   `CREATE TABLE commits (
      hash TEXT PRIMARY KEY,
@@ -101,6 +175,45 @@ const MIGRATIONS: string[] = [
    );
    CREATE INDEX analyses_commit ON analyses (commit_hash, created_at DESC);
    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  `CREATE TABLE ask_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    backend TEXT NOT NULL,
+    model TEXT,
+    created_at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    answer TEXT,
+    calls TEXT NOT NULL,
+    error TEXT,
+    usage TEXT
+  );
+  CREATE INDEX ask_history_created ON ask_history (created_at DESC);`,
+  `CREATE TABLE sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task TEXT NOT NULL,
+    summary TEXT,
+    agent TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    start_seq INTEGER NOT NULL,
+    end_seq INTEGER,
+    changes TEXT NOT NULL
+  );
+  CREATE INDEX sessions_started ON sessions (started_at DESC, id DESC);
+  CREATE TABLE session_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES sessions (id),
+    component TEXT NOT NULL,
+    label TEXT NOT NULL,
+    backend TEXT NOT NULL,
+    model TEXT,
+    created_at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    files TEXT NOT NULL,
+    error TEXT
+  );
+  CREATE INDEX session_notes_session ON session_notes (session_id);`,
 ];
 
 interface CommitRow {
@@ -118,6 +231,47 @@ interface CommitRow {
   recorded_at: number;
 }
 
+interface AskRow {
+  id: number;
+  question: string;
+  backend: string;
+  model: string | null;
+  created_at: number;
+  status: AskStatus;
+  answer: string | null;
+  calls: string;
+  error: string | null;
+  usage: string | null;
+}
+
+interface SessionRow {
+  id: number;
+  task: string;
+  summary: string | null;
+  agent: string;
+  started_at: number;
+  ended_at: number | null;
+  start_seq: number;
+  end_seq: number | null;
+  changes: string;
+}
+
+interface SessionNoteRow {
+  id: number;
+  session_id: number;
+  component: string;
+  label: string;
+  backend: string;
+  model: string | null;
+  created_at: number;
+  status: SessionNoteStatus;
+  note: string | null;
+  files: string;
+  error: string | null;
+}
+
+export const EMPTY_CHANGES: SessionChanges = { files: [], added: [], changed: [], removed: [], linksAdded: [], linksRemoved: [] };
+
 interface AnalysisRow {
   id: number;
   commit_hash: string;
@@ -130,6 +284,18 @@ interface AnalysisRow {
   error: string | null;
   usage: string | null;
 }
+
+const toSession = (r: SessionRow): SessionRecord => ({
+  id: r.id,
+  task: r.task,
+  summary: r.summary,
+  agent: r.agent,
+  startedAt: r.started_at,
+  endedAt: r.ended_at,
+  startSeq: r.start_seq,
+  endSeq: r.end_seq,
+  changes: JSON.parse(r.changes) as SessionChanges,
+});
 
 const toCommit = (r: CommitRow): CommitRecord => ({
   hash: r.hash,
@@ -273,6 +439,86 @@ export class KnowledgeStore {
     const commits = (this.db.prepare('SELECT COUNT(*) AS n FROM commits').get() as { n: number }).n;
     const analysed = (this.db.prepare("SELECT COUNT(DISTINCT commit_hash) AS n FROM analyses WHERE status = 'ok'").get() as { n: number }).n;
     return { commits, analysed };
+  }
+
+  addAsk(entry: { question: string; backend: string; model: string | null; status: AskStatus; answer: AskAnswer | null; calls: AskToolCall[]; error: string | null; usage: Record<string, unknown> | null }): number {
+    const row = this.db
+      .prepare(
+        'INSERT INTO ask_history (question, backend, model, created_at, status, answer, calls, error, usage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      )
+      .get(
+        entry.question,
+        entry.backend,
+        entry.model,
+        Date.now(),
+        entry.status,
+        entry.answer ? JSON.stringify(entry.answer) : null,
+        JSON.stringify(entry.calls),
+        entry.error,
+        entry.usage ? JSON.stringify(entry.usage) : null,
+      ) as { id: number };
+    return row.id;
+  }
+
+  askHistory(limit = 20): AskRecord[] {
+    return (this.db.prepare('SELECT * FROM ask_history ORDER BY created_at DESC, id DESC LIMIT ?').all(limit) as unknown as AskRow[]).map((r) => ({
+      id: r.id,
+      question: r.question,
+      backend: r.backend,
+      model: r.model,
+      createdAt: r.created_at,
+      status: r.status,
+      answer: r.answer ? (JSON.parse(r.answer) as AskAnswer) : null,
+      calls: JSON.parse(r.calls) as AskToolCall[],
+      error: r.error,
+      usage: r.usage ? (JSON.parse(r.usage) as Record<string, unknown>) : null,
+    }));
+  }
+
+  startSession(entry: { task: string; agent: string; startSeq: number }): number {
+    const row = this.db
+      .prepare('INSERT INTO sessions (task, summary, agent, started_at, ended_at, start_seq, end_seq, changes) VALUES (?, NULL, ?, ?, NULL, ?, NULL, ?) RETURNING id')
+      .get(entry.task, entry.agent, Date.now(), entry.startSeq, JSON.stringify(EMPTY_CHANGES)) as { id: number };
+    return row.id;
+  }
+
+  /** The newest still-open session for this agent, if any. */
+  openSession(agent: string): SessionRecord | null {
+    const row = this.db.prepare('SELECT * FROM sessions WHERE agent = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1').get(agent) as unknown as SessionRow | undefined;
+    return row ? toSession(row) : null;
+  }
+
+  endSession(id: number, entry: { summary: string | null; endSeq: number; changes: SessionChanges }): void {
+    this.db.prepare('UPDATE sessions SET summary = ?, ended_at = ?, end_seq = ?, changes = ? WHERE id = ?').run(entry.summary, Date.now(), entry.endSeq, JSON.stringify(entry.changes), id);
+  }
+
+  sessions(limit = 20): SessionRecord[] {
+    return (this.db.prepare('SELECT * FROM sessions ORDER BY started_at DESC, id DESC LIMIT ?').all(limit) as unknown as SessionRow[]).map(toSession);
+  }
+
+  addSessionNote(entry: { sessionId: number; component: string; label: string; backend: string; model: string | null; status: SessionNoteStatus; note: string | null; files: string[]; error: string | null }): number {
+    const row = this.db
+      .prepare('INSERT INTO session_notes (session_id, component, label, backend, model, created_at, status, note, files, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id')
+      .get(entry.sessionId, entry.component, entry.label, entry.backend, entry.model, Date.now(), entry.status, entry.note, JSON.stringify(entry.files), entry.error) as { id: number };
+    return row.id;
+  }
+
+  sessionNotes(sessionIds: number[]): SessionNote[] {
+    if (!sessionIds.length) return [];
+    const rows = this.db.prepare(`SELECT * FROM session_notes WHERE session_id IN (${sessionIds.map(() => '?').join(',')}) ORDER BY id`).all(...sessionIds) as unknown as SessionNoteRow[];
+    return rows.map((r) => ({
+      id: r.id,
+      sessionId: r.session_id,
+      component: r.component,
+      label: r.label,
+      backend: r.backend,
+      model: r.model,
+      createdAt: r.created_at,
+      status: r.status,
+      note: r.note,
+      files: JSON.parse(r.files) as string[],
+      error: r.error,
+    }));
   }
 
   getMeta(key: string): string | null {

@@ -2,10 +2,12 @@
  * Eyrie as an MCP server, for coding agents (Claude Code, Codex, Cursor, …):
  * `eyrie mcp [path]` speaks the Model Context Protocol over stdio.
  *
- * Every tool is read-only ("Eyrie reads; your editor writes") and answers
- * from the live graph, so an agent can ask what a file belongs to and what
- * depends on it before an edit, and what its edits changed afterwards. Answers
- * are facts from parsed code; AI notes on commits are returned as labelled notes.
+ * Every tool answers from the live graph and leaves the repository alone
+ * ("Eyrie reads; your editor writes"), so an agent can ask what a file belongs
+ * to and what depends on it before an edit, and what its edits changed
+ * afterwards. Answers are facts from parsed code; AI notes on commits are
+ * returned as labelled notes. `ask` additionally stores the question and its
+ * answer in Eyrie's local knowledge.db, alongside commit notes.
  *
  * The protocol is newline-delimited JSON-RPC 2.0 on stdin/stdout; stdout carries
  * nothing else, so logging goes to stderr.
@@ -14,15 +16,17 @@ import { createInterface } from 'node:readline';
 import { isAbsolute, relative, sep } from 'node:path';
 import type { ArchEdge, ArchNode } from '@eyrie/core';
 import type { EngineBatch, GraphEngine } from '@eyrie/engine';
-import { commitView, type ProjectKnowledge } from '@eyrie/knowledge';
+import { agentOfClient, commitView, noteSessionChanges, type AiBackend, type KnowledgeStore, type ProjectKnowledge, type SessionChanges } from '@eyrie/knowledge';
 import { archPath, focusSet, impactOf, matches } from '@eyrie/lens';
+import { answerQuestion } from './ask.js';
+import { runHealthCheck } from './check.js';
 
 /** Protocol revisions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS = `Eyrie keeps a live architecture map of this repository: components (pages, API routes, services, data models, external services…) in lanes ui → edge → api → logic → data → external, and the links between them. Every link comes from parsed code, and the map updates as files are saved.
-Before editing, call components_for_files with the files you plan to change, and impact on the components involved, to see what depends on them. After editing, call recent_changes to see what your edits changed in the architecture: new or removed components and links you may not have intended.
-Refer to a component by the id these tools return; a name or file path works when it is unambiguous. commit_history includes AI notes on commits when the user turned them on; those are labelled opinions, not facts.`;
+Before editing, call components_for_files with the files you plan to change, and impact on the components involved, to see what depends on them. At the start of a task, call record_intent with the task; call it again with done when the task ends. After editing, call recent_changes to see what your edits changed in the architecture: new or removed components and links you may not have intended. Call check on the files you touched for new findings: hardcoded secrets, unguarded writes, unverified webhooks and the rest.
+Refer to a component by the id these tools return; a name or file path works when it is unambiguous. commit_history includes AI notes on commits when the user turned them on; those are labelled opinions, not facts. ask answers a question about the architecture with a model, grounded in these tools; it runs a model, so prefer the direct tools for single facts.`;
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -43,7 +47,9 @@ interface Tool {
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  run: (args: Record<string, unknown>) => unknown;
+  run: (args: Record<string, unknown>) => unknown | Promise<unknown>;
+  /** Overrides the default read-only annotations, for tools that store their answer locally. */
+  annotations?: { readOnlyHint?: boolean; idempotentHint?: boolean };
 }
 
 /** A tool's answer when a component reference matches several components, or none. */
@@ -56,7 +62,7 @@ class LookupError extends Error {
   }
 }
 
-/** One engine batch, kept in architecture terms for `recent_changes`. */
+/** One engine batch, kept in architecture terms for `recent_changes`. Links keep their ids so sessions can point at the map. */
 interface ChangeRecord {
   seq: number;
   at: string;
@@ -64,8 +70,8 @@ interface ChangeRecord {
   componentsAdded: ComponentBrief[];
   componentsRemoved: ComponentBrief[];
   componentsChanged: ComponentBrief[];
-  linksAdded: { from: string; to: string; kinds: string[] }[];
-  linksRemoved: { from: string; to: string }[];
+  linksAdded: { source: string; target: string; from: string; to: string; kinds: string[] }[];
+  linksRemoved: { source: string; target: string; from: string; to: string; kinds: string[] }[];
 }
 
 interface ComponentBrief {
@@ -91,6 +97,8 @@ export interface McpOptions {
   version: string;
   /** Components listed per lane in architecture_overview (default 60). */
   laneLimit?: number;
+  /** The model `ask` answers with. Without one, `ask` reports that AI is off. */
+  ai?: AiBackend | null;
 }
 
 /** Handles MCP messages for one project. Transport-free, so it is tested without stdio. */
@@ -98,11 +106,13 @@ export class EyrieMcp {
   private readonly changes: ChangeRecord[] = [];
   /** Labels of components seen so far, to name removed ones. */
   private readonly known = new Map<string, ComponentBrief>();
-  private readonly edgesSeen = new Map<string, { source: string; target: string }>();
+  private readonly edgesSeen = new Map<string, { source: string; target: string; kinds: string[] }>();
   private readonly tools: Tool[];
   private readonly onBatch = (batch: EngineBatch) => this.recordBatch(batch);
   private readonly ready: Promise<void>;
   private knowledge?: ProjectKnowledge;
+  /** The MCP client's name from `initialize`, for session attribution. */
+  private clientName: string | null = null;
 
   constructor(private readonly opts: McpOptions) {
     // initialize and tools/list are answered at once; tool calls wait for the index.
@@ -135,6 +145,8 @@ export class EyrieMcp {
     switch (req.method) {
       case 'initialize': {
         const asked = typeof params.protocolVersion === 'string' ? params.protocolVersion : '';
+        const client = (params as { clientInfo?: { name?: unknown } }).clientInfo;
+        if (typeof client?.name === 'string' && client.name) this.clientName = client.name;
         return reply({
           protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
           capabilities: { tools: { listChanged: false } },
@@ -146,12 +158,12 @@ export class EyrieMcp {
         return reply({});
       case 'tools/list':
         return reply({
-          tools: this.tools.map(({ name, title, description, inputSchema }) => ({
+          tools: this.tools.map(({ name, title, description, inputSchema, annotations }) => ({
             name,
             title,
             description,
             inputSchema,
-            annotations: { title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+            annotations: { title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, ...annotations },
           })),
         });
       case 'tools/call': {
@@ -162,20 +174,37 @@ export class EyrieMcp {
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Eyrie could not index this project: ${(err as Error).message}` }], isError: true });
         }
-        return reply(this.callTool(tool, (params.arguments as Record<string, unknown> | undefined) ?? {}));
+        return reply(await this.callTool(tool, (params.arguments as Record<string, unknown> | undefined) ?? {}));
       }
       default:
         return fail(-32601, `Method not found: ${req.method}`);
     }
   }
 
-  private callTool(tool: Tool, args: Record<string, unknown>): ToolResult {
+  private async callTool(tool: Tool, args: Record<string, unknown>): Promise<ToolResult> {
     try {
-      return { content: [{ type: 'text', text: JSON.stringify(tool.run(args), null, 1) }] };
+      return { content: [{ type: 'text', text: JSON.stringify(await tool.run(args), null, 1) }] };
     } catch (err) {
       const body = err instanceof LookupError ? { error: err.message, candidates: err.candidates } : { error: (err as Error).message };
       return { content: [{ type: 'text', text: JSON.stringify(body, null, 1) }], isError: true };
     }
+  }
+
+  /**
+   * Answers one tool by name, waiting for the index like a tool call. The Ask
+   * loop's tools call through here, so a question is answered from the same
+   * graph an agent sees.
+   */
+  async answerTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    const tool = this.tools.find((t) => t.name === name);
+    if (!tool) throw new Error(`Unknown tool: ${name}`);
+    await this.ready;
+    return tool.run(args);
+  }
+
+  /** Every component id on the current map, for grounding an answer's citations. */
+  componentIds(): Set<string> {
+    return new Set(this.opts.engine.architecture.nodes.map((n) => n.id));
   }
 
   // ── lookups ─────────────────────────────────────────────────────────────
@@ -243,15 +272,81 @@ export class EyrieMcp {
       componentsAdded: a.addedNodes.map(brief),
       componentsRemoved: a.removedNodes.map(name),
       componentsChanged: a.updatedNodes.map(brief),
-      linksAdded: a.addedEdges.map((e) => ({ from: label(e.source), to: label(e.target), kinds: e.kinds })),
+      linksAdded: a.addedEdges.map((e) => ({ source: e.source, target: e.target, from: label(e.source), to: label(e.target), kinds: e.kinds })),
       linksRemoved: a.removedEdges.map((id) => {
         const e = this.edgesSeen.get(id);
-        return e ? { from: label(e.source), to: label(e.target) } : { from: id, to: '?' };
+        return e ? { source: e.source, target: e.target, from: label(e.source), to: label(e.target), kinds: e.kinds } : { source: id, target: '?', from: id, to: '?', kinds: [] };
       }),
     };
     for (const e of [...a.addedEdges, ...a.updatedEdges]) this.edgesSeen.set(e.id, e);
     this.changes.push(record);
     if (this.changes.length > MAX_CHANGES) this.changes.shift();
+  }
+
+  /**
+   * The `recent_changes` window after `sinceSeq`, aggregated to net change:
+   * a component added and then removed in the window counts as removed.
+   */
+  private sessionChanges(sinceSeq: number): SessionChanges {
+    const files = new Map<string, string>();
+    const added = new Map<string, ComponentBrief>();
+    const changed = new Map<string, ComponentBrief>();
+    const removed = new Map<string, ComponentBrief>();
+    const linksAdded: SessionChanges['linksAdded'] = [];
+    const linksRemoved: SessionChanges['linksRemoved'] = [];
+    for (const c of this.changes) {
+      if (c.seq <= sinceSeq) continue;
+      for (const f of c.files) files.set(f.file, f.change);
+      for (const n of c.componentsAdded) {
+        added.set(n.id, n);
+        changed.delete(n.id);
+        removed.delete(n.id);
+      }
+      for (const n of c.componentsChanged) {
+        if (!added.has(n.id) && !removed.has(n.id)) changed.set(n.id, n);
+      }
+      for (const n of c.componentsRemoved) {
+        removed.set(n.id, n);
+        added.delete(n.id);
+        changed.delete(n.id);
+      }
+      linksAdded.push(...c.linksAdded);
+      linksRemoved.push(...c.linksRemoved);
+    }
+    return {
+      files: [...files].map(([file, change]) => ({ file, change })).sort((a, b) => (a.file < b.file ? -1 : 1)),
+      added: [...added.values()],
+      changed: [...changed.values()],
+      removed: [...removed.values()],
+      linksAdded,
+      linksRemoved,
+    };
+  }
+
+  private startIntent(store: KnowledgeStore, agent: string, task: string): unknown {
+    // A new task ends whatever this agent left open: sessions must not leak across tasks.
+    const open = store.openSession(agent);
+    if (open) store.endSession(open.id, { summary: null, endSeq: this.opts.engine.seq, changes: this.sessionChanges(open.startSeq) });
+    const session = store.startSession({ task, agent, startSeq: this.opts.engine.seq });
+    return { session, agent, task, status: 'started' };
+  }
+
+  private async endIntent(store: KnowledgeStore, agent: string, summary: string | null): Promise<unknown> {
+    const open = store.openSession(agent);
+    if (!open) throw new Error(`No open session for ${agent}. Start one with record_intent and a task.`);
+    const endSeq = this.opts.engine.seq;
+    const changes = this.sessionChanges(open.startSeq);
+    store.endSession(open.id, { summary, endSeq, changes });
+    const components = [...changes.added, ...changes.changed];
+    const backend = this.opts.ai;
+    if (backend && components.length) {
+      const { noted, model } = await noteSessionChanges(backend, { task: open.task, components, touchedFiles: changes.files.map((f) => f.file) }, 180_000);
+      for (const n of noted) {
+        store.addSessionNote({ sessionId: open.id, component: n.component, label: n.label, backend: backend.name, model, status: n.status, note: n.note, files: n.files, error: n.error });
+      }
+      return { session: open.id, agent, task: open.task, summary, status: 'ended', changes, notes: noted };
+    }
+    return { session: open.id, agent, task: open.task, summary, status: 'ended', changes, notes: [] };
   }
 
   // ── tools ───────────────────────────────────────────────────────────────
@@ -330,6 +425,32 @@ export class EyrieMcp {
         },
       },
       {
+        name: 'record_intent',
+        title: 'Record task intent',
+        description:
+          'Tell Eyrie what you are working on: call with the task when you start, and again with done (and a summary) when you end. Eyrie keeps the session — task, agent, time, and the components your edits changed — so the user sees the why behind recent work.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: { type: 'string', description: 'What you are about to do. Starts a session; ends any session of yours still open.' },
+            summary: { type: 'string', description: 'What you did. Ends the open session when given with done.' },
+            done: { type: 'boolean', description: 'End the open session.' },
+          },
+          required: [],
+        },
+        annotations: { readOnlyHint: false, idempotentHint: false },
+        run: async (args) => {
+          const knowledge = this.knowledge;
+          if (!knowledge) throw new Error('Sessions need the knowledge store, which this server was started without.');
+          const agent = agentOfClient(this.clientName ?? 'unknown');
+          if (args.done === true) return this.endIntent(knowledge.store, agent, typeof args.summary === 'string' ? args.summary : null);
+          const task = typeof args.task === 'string' ? args.task.trim() : '';
+          if (!task) throw new Error('Give the task you are starting, or end the open session with done.');
+          if (task.length > 500) throw new Error('Keep the task to 500 characters.');
+          return this.startIntent(knowledge.store, agent, task);
+        },
+      },
+      {
         name: 'commit_history',
         title: 'Commit history',
         description:
@@ -344,6 +465,43 @@ export class EyrieMcp {
           },
         },
         run: (args) => this.commits(args),
+      },
+      {
+        name: 'check',
+        title: 'Health check',
+        description:
+          'Security and health findings from the architecture graph: hardcoded secrets, secrets in public env vars, exposed .env files, tables without row-level security, test-mode rules, routes that reach a write with no auth guard, server env read in UI code, and webhooks without verification. Pass the files you changed to limit the findings to them; without files, the whole project is checked.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            files: { type: 'array', items: { type: 'string' }, description: 'Paths relative to the repository, or absolute. Omit to check everything.' },
+          },
+          required: [],
+        },
+        run: async (args) => {
+          const files = Array.isArray(args.files) ? args.files.map(String) : typeof args.files === 'string' ? [args.files] : undefined;
+          return runHealthCheck(this.opts.engine, { onlyFiles: files?.map((f) => this.relativeFile(f)) });
+        },
+      },
+      {
+        name: 'ask',
+        title: 'Ask the map',
+        description:
+          'Ask a question about the architecture in plain language ("where does checkout write?", "what uses the cart service?"). A model answers by calling the read-only tools above; every component it names comes back from a tool call. Runs a model, so prefer the direct tools for single facts.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: 'The question, in plain language' },
+          },
+          required: ['question'],
+        },
+        annotations: { readOnlyHint: false, idempotentHint: false },
+        run: async (args) => {
+          const backend = this.opts.ai;
+          if (!backend) throw new Error('AI is off. Start Eyrie with --ai (claude, codex, muse or openai) to ask questions.');
+          if (typeof args.question !== 'string' || !args.question.trim()) throw new Error('Ask a question.');
+          return answerQuestion({ mcp: this, knowledge: this.knowledge ?? null, backend, question: args.question });
+        },
       },
     ];
   }

@@ -14,11 +14,12 @@ interface Props {
   marks: Map<string, Mark>;
   flow: boolean;
   sweep: number;
+  insight: { ids: Set<string>; color: string } | null;
   sceneRef: React.RefObject<CityScene | null>;
   onError(): void;
 }
 
-export function CityLayer({ layout, origin, angle, emphasis, selected, marks, flow, sweep, sceneRef, onError }: Props) {
+export function CityLayer({ layout, origin, angle, emphasis, selected, marks, flow, sweep, insight, sceneRef, onError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewport = useViewport();
   useEffect(() => {
@@ -41,14 +42,14 @@ export function CityLayer({ layout, origin, angle, emphasis, selected, marks, fl
   useEffect(() => { sceneRef.current?.build(layout, origin); }, [layout, origin, sceneRef]);
   useEffect(() => { sceneRef.current?.orient(angle); }, [angle, sceneRef]);
   useEffect(() => { sceneRef.current?.setViewport(viewport); }, [viewport, sceneRef]);
-  useEffect(() => { sceneRef.current?.emphasize(emphasis, selected, marks, flow, sweep); }, [layout, emphasis, selected, marks, flow, sweep, sceneRef]);
+  useEffect(() => { sceneRef.current?.emphasize(emphasis, selected, marks, flow, sweep, insight); }, [layout, emphasis, selected, marks, flow, sweep, insight, sceneRef]);
   useEffect(() => {
     const repaint = () => {
       const scene = sceneRef.current;
       scene?.build(layout, origin);
       scene?.orient(angle);
       scene?.setViewport(viewport);
-      scene?.emphasize(emphasis, selected, marks, flow, sweep);
+      scene?.emphasize(emphasis, selected, marks, flow, sweep, insight);
     };
     // Repaint when data-theme attribute changes (user toggled theme).
     const observer = new MutationObserver((mutations) => {
@@ -59,7 +60,7 @@ export function CityLayer({ layout, origin, angle, emphasis, selected, marks, fl
     const mq = window.matchMedia('(prefers-color-scheme: light)');
     mq.addEventListener('change', repaint);
     return () => { observer.disconnect(); mq.removeEventListener('change', repaint); };
-  }, [layout, origin, angle, viewport, emphasis, selected, marks, flow, sweep, sceneRef]);
+  }, [layout, origin, angle, viewport, emphasis, selected, marks, flow, sweep, insight, sceneRef]);
   useEffect(() => {
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const refresh = () => sceneRef.current?.refreshMotion();

@@ -3,13 +3,16 @@ import { dirname } from 'node:path';
 import type { CodeDiff, CodeEdge, CodeNode, FileFacts } from '@eyrie/core';
 
 // node:sqlite prints an ExperimentalWarning on load; it is stable enough for a local cache.
+// Loaded with getBuiltinModule (not a top-level await) so this module also
+// bundles to CommonJS: the desktop app's single-executable `eyrie` command is
+// a CJS snapshot, where neither await nor import.meta exists.
 const emitWarning = process.emitWarning;
 process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
   const text = typeof warning === 'string' ? warning : warning.message;
   if (text.includes('SQLite')) return;
   return (emitWarning as (...a: unknown[]) => void).call(process, warning, ...rest);
 }) as typeof process.emitWarning;
-const { DatabaseSync } = await import('node:sqlite');
+const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
 process.emitWarning = emitWarning;
 
 type Database = InstanceType<typeof DatabaseSync>;
@@ -35,7 +38,9 @@ export class GraphStorage {
   static open(path: string, opts: { factsVersion: string }): GraphStorage {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     const db = new DatabaseSync(path);
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
+    // Several engines share one cache (the app's, one per agent's MCP server):
+    // a writer that meets another waits instead of failing at once.
+    db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;');
     const storage = new GraphStorage(db);
     storage.migrate(opts.factsVersion);
     return storage;

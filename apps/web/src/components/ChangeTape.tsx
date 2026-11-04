@@ -38,6 +38,7 @@ export function ChangeTape() {
   const frames = useStore((s) => s.frames);
   const hoverFrame = useStore((s) => s.hoverFrame);
   const stats = useStore((s) => s.stats);
+  const recent = useStore((s) => s.recent);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +58,9 @@ export function ChangeTape() {
 
   const shown = frames.find((f) => f.seq === hoverFrame) ?? frames[frames.length - 1];
   const max = Math.max(4, ...frames.map(magnitude));
+  // Ticks inside a live agent session sit on a shaded band.
+  const live = useMemo(() => (recent?.sessions ?? []).filter((s) => !s.endedAt).map((s) => ({ from: s.startedAt, task: `${s.agent} · ${s.task}` })), [recent]);
+  const sessionOf = (at: number) => live.find((w) => at >= w.from)?.task;
 
   return (
     <footer className="flex h-[60px] shrink-0 items-stretch border-t border-rule bg-ink-1" aria-label="Change history">
@@ -83,11 +87,12 @@ export function ChangeTape() {
             const h = 6 + Math.round((Math.log1p(magnitude(f)) / Math.log1p(max)) * 30);
             const t = tone(f);
             const { action, result } = describeFrame(f);
+            const inSession = sessionOf(f.at);
             return (
-              <li key={f.seq} className="flex h-full items-end">
+              <li key={f.seq} className={`flex h-full items-end ${inSession ? 'tick-session' : ''}`}>
                 <button
                   type="button"
-                  aria-label={`${time(f.at)}: ${action}. ${result}`}
+                  aria-label={`${time(f.at)}: ${action}. ${result}${inSession ? `. In session: ${inSession}` : ''}`}
                   onMouseEnter={() => store.setHoverFrame(f.seq)}
                   onFocus={() => store.setHoverFrame(f.seq)}
                   onBlur={() => store.setHoverFrame(null)}
@@ -95,7 +100,8 @@ export function ChangeTape() {
                     const target = f.added[0]?.id ?? f.touched[0];
                     if (target) store.select(target, true);
                   }}
-                  className="group flex h-full w-[7px] items-end justify-center"
+                  className="group flex h-full w-[24px] items-end justify-center"
+                  title={`${time(f.at)}${inSession ? ` · ${inSession}` : ''}`}
                 >
                   <span
                     className={`tick block w-[4px] rounded-[1.5px] transition-opacity ${hoverFrame !== null && hoverFrame !== f.seq ? 'opacity-35' : ''}`}

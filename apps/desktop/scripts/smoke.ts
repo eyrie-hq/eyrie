@@ -3,15 +3,17 @@
  * fixtures/bookstore-app with an empty cache, so its bundled grammars parse
  * every file, and with a user-data folder of its own, where it records what it
  * indexed in projects.json. The engine is deterministic, so that must match
- * what the engine finds here, run from source on the same machine.
+ * what the engine finds here, run from source on the same machine. Then the
+ * app's bundled `eyrie` command answers `architecture_overview` over MCP, and
+ * that must match too.
  *
  * It reads projects.json rather than the app's output because a Windows GUI
  * app's stdout is not dependable.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GraphEngine } from '@eyrie/engine';
 
@@ -78,9 +80,77 @@ console.log(`packaged app:       ${actual ? JSON.stringify(actual) : project?.er
 if (ok) console.log(`PASS: the packaged app indexed the fixture as the engine does (${seconds} s)`);
 else console.log(`FAIL\n--- app output ---\n${output.slice(-4000)}`);
 
+/** The `eyrie` command shipped in the app's resources next to the executable. */
+function bundledCli(executable: string): string | null {
+  const dir = dirname(realpathSync(executable));
+  const resources = basename(dir) === 'MacOS' ? join(dir, '..', 'Resources') : join(dir, 'resources');
+  const bin = join(resources, 'cli', process.platform === 'win32' ? 'eyrie.exe' : 'eyrie');
+  return existsSync(bin) ? bin : null;
+}
+
+/** Asks the bundled command for `architecture_overview` over MCP. */
+async function cliOverview(bin: string): Promise<Counts> {
+  const child = spawn(bin, ['mcp', fixture, '--no-watch'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, EYRIE_HOME: join(dir, 'cli-home') } });
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+  const stop = () => {
+    child.kill();
+    return new Promise((r) => child.once('exit', r));
+  };
+  try {
+    const call = (id: number, method: string, params: Record<string, unknown>) =>
+      new Promise<unknown>((resolve, reject) => {
+        let buffer = '';
+        const onData = (chunk: string) => {
+          buffer += chunk;
+          let end: number;
+          while ((end = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, end).trim();
+            buffer = buffer.slice(end + 1);
+            if (!line) continue;
+            const message = JSON.parse(line) as { id?: number; result?: unknown; error?: { message?: string } };
+            if (message.id !== id) continue;
+            child.stdout.off('data', onData);
+            if (message.error) reject(new Error(message.error.message ?? 'JSON-RPC error'));
+            else resolve(message.result);
+          }
+        };
+        child.stdout.setEncoding('utf8').on('data', onData);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      });
+    const timeout = setTimeout(() => void stop().then(() => console.log('CLI check timed out after 120 s')), 120_000);
+    try {
+      await call(1, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'desktop-smoke', version: '0' } });
+      const answer = (await call(2, 'tools/call', { name: 'architecture_overview', arguments: {} })) as { content?: { text?: string }[] };
+      const overview = JSON.parse(answer?.content?.[0]?.text ?? 'null') as { size?: Counts } | null;
+      if (!overview?.size) throw new Error(`no overview in the answer${stderr ? ` (stderr: ${stderr.slice(-500)})` : ''}`);
+      return overview.size;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } finally {
+    await stop();
+  }
+}
+
+let cliOk = false;
+const cliBin = bundledCli(executable);
+if (!cliBin) {
+  console.log('FAIL: the packaged app ships no eyrie command in its resources');
+} else {
+  try {
+    const cliCounts = await cliOverview(cliBin);
+    cliOk = (Object.keys(expected) as (keyof Counts)[]).every((k) => cliCounts[k] === expected[k]);
+    console.log(`bundled eyrie:    ${JSON.stringify(cliCounts)}`);
+    console.log(cliOk ? 'PASS: the packaged app’s eyrie command answered as the engine does' : 'FAIL: the bundled eyrie command answered differently');
+  } catch (err) {
+    console.log(`FAIL: the bundled eyrie command failed: ${(err as Error).message}`);
+  }
+}
+
 try {
   rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
 } catch {
   /* Windows may still hold a file of the engine host's; it is a temp folder */
 }
-process.exit(ok ? 0 : 1);
+process.exit(ok && cliOk ? 0 : 1);

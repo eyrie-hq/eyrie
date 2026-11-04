@@ -2,6 +2,7 @@ import { Box, Map as MapIcon, Maximize2, Minus, Plus, RotateCcw, RotateCw, Scan 
 import { useEffect, useMemo, useRef } from 'react';
 import { SequenceView } from './SequenceView';
 import { store, useStore, type Lens, type ViewMode } from '../state/store';
+import { systemIdOf } from '@eyrie/lens';
 import { focusSet, matches } from './analysis';
 import { FlowCanvas } from './FlowCanvas';
 import { computeLayout, type Layout } from './layout';
@@ -109,12 +110,31 @@ function MapView() {
     const ids = [...f.touched, ...f.added.map((a) => a.id)];
     return lens === 'system' ? boxIds(ids, nodes) : new Set(ids);
   }, [hoverFrame, frames, lens, nodes]);
+  const insight = useStore((s) => s.highlight);
+  const insightSet = useMemo(() => {
+    if (!insight?.ids.length) return null;
+    // In the System view a box lights up when a component inside it is cited.
+    const onMap = lens === 'system' ? boxIds(insight.ids, nodes) : new Set(insight.ids.filter((id) => nodes.some((n) => n.id === id)));
+    if (!onMap.size) return null;
+    const labels = new Map<string, string>();
+    if (lens === 'system') {
+      for (const id of insight.ids) {
+        const component = components.get(id);
+        if (!component) continue;
+        const box = systemIdOf(component);
+        if (onMap.has(box) && !labels.has(box) && insight.labels?.[id]) labels.set(box, insight.labels[id]!);
+      }
+    } else {
+      for (const [id, label] of Object.entries(insight.labels ?? {})) if (onMap.has(id)) labels.set(id, label);
+    }
+    return { source: insight.source, ids: onMap, labels, path: insight.path ?? [] };
+  }, [insight, lens, nodes, components]);
 
   useEffect(() => {
-    const hl: Highlight = { selected, focus, flow: focusMode !== 'neighbors', matches: matchSet, frame: frameSet };
+    const hl: Highlight = { selected, focus, flow: focusMode !== 'neighbors', matches: matchSet, frame: frameSet, insight: insightSet };
     highlightRef.current = hl;
     rendererRef.current?.setHighlight(hl);
-  }, [selected, focus, focusMode, matchSet, frameSet, graphVersion, view]);
+  }, [selected, focus, focusMode, matchSet, frameSet, insightSet, graphVersion, view]);
 
   useEffect(() => {
     if (reveal) rendererRef.current?.reveal(reveal.id);
@@ -225,7 +245,11 @@ function GlobalKeys() {
       if (target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey) return;
       const lens = LENS_KEYS[e.key];
       if (lens) store.setLens(lens);
-      if (e.key === 'Escape') store.select(null);
+      if (e.key === 'a' || e.key === 'A') store.openDrawer('ask');
+      if (e.key === 'Escape') {
+        if (store.get().drawer.open) store.closeDrawer();
+        else store.select(null);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

@@ -52,15 +52,33 @@ typography:
     fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "13px"
     lineHeight: 1.5
+  compact:
+    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "12px"
+    lineHeight: 1.6
+  small:
+    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "11px"
+    lineHeight: 1.5
+  micro:
+    fontFamily: "Fragment Mono, ui-monospace, SFMono-Regular, monospace"
+    fontSize: "10.5px"
+    lineHeight: 1.4
   label:
     fontFamily: "Fragment Mono, ui-monospace, SFMono-Regular, monospace"
     fontSize: "10px"
     lineHeight: 1.4
 rounded:
   badge: "2px"
+  control-sm: "3px"
+  control: "4px"
+  control-lg: "5px"
+  input: "6px"
   node: "7px"
+  card: "8px"
   panel: "12px"
   overlay: "14px"
+  pill: "999px"
 components:
   lens-option:
     backgroundColor: "{colors.ink-3}"
@@ -80,6 +98,12 @@ components:
     rounded: "6px"
     padding: "0 32px 0 32px"
     height: "32px"
+  inspector-row:
+    backgroundColor: "{colors.ink-1}"
+    textColor: "{colors.text}"
+    rounded: "6px"
+    padding: "8px 10px"
+    height: "40px"
   graph-node:
     backgroundColor: "{colors.ink-2}"
     textColor: "{colors.text}"
@@ -161,6 +185,9 @@ Both families are bundled locally through `@fontsource*`; the interface does not
 - **Graph Title** (650, 14px, 20px): React Flow component labels.
 - **City Title** (650, 18px, 24px in scene coordinates): Roof-aligned React Flow labels on Three.js blocks; labels use the block camera projection and scale with scene zoom, not viewport width.
 - **Body** (400, 13px, 1.5): Explanatory copy and normal interface text.
+- **Compact** (400–650, 12px, 1.6): Drawer and panel rows, finding cards, buttons. Dense rows may step to 12.5px where a full step up would break alignment.
+- **Small** (400–600, 11px, 1.5): Bylines, chips, secondary rows. Dense panel rows may step to 11.5px for the same reason.
+- **Micro** (400–700, 10.5px mono, 1.4): Timestamps, severities, commit hashes, and other compact metadata.
 - **Label** (400, 10px, 1.4, uppercase where semantic): Lane names, metadata, and section labels; monospace is reserved for technical identifiers and compact metadata.
 
 Archivo's width axis provides emphasis and fit: `.wide` uses 125% stretch for selected labels, while `.condensed` uses 87.5% for identifiers that need to fit. Keep the hierarchy compact; the graph is the primary reading surface.
@@ -170,7 +197,7 @@ Archivo's width axis provides emphasis and fit: `.wide` uses 125% stretch for se
 
 ## Layout
 
-The application fills the viewport height with a compact top bar, a central canvas, an optional details panel, and a change tape. The canvas absorbs available space. Opening details overlays or occupies a fixed side panel without causing the map to reflow. On narrow screens the details panel moves to the bottom; fewer lanes fit in view rather than shrinking graph nodes.
+The application fills the viewport height with a compact top bar, a central canvas, an optional details panel, and a change tape. The canvas absorbs available space. Opening details overlays or occupies a fixed side panel without causing the map to reflow. On narrow screens the details panel moves to the bottom and the insight drawer overlays the top of the map at half the viewport height; fewer lanes fit in view rather than shrinking graph nodes.
 
 The lane order is fixed product vocabulary: UI → Edge → API → Logic → Data → External. React Flow owns both viewports, accessible component interactions, and pannable minimaps; ELK remains the shared layout and routing authority. A 2D lane ruler identifies off-screen lanes and changed components, with arrow controls to reveal each lane. The 2D nodes and 3D floors are 216px wide and 80px deep. Fitting the 2D map never reduces scale below 0.85. The 3D overview fits projected bounds on desktop, while narrow views retain a 0.85 minimum for inspection. The minimap recedes on narrow screens, and the mobile inspector reserves room for the selected node. Three.js draws a full-bleed orthographic city at a default yaw of -28 degrees and elevation of 52 degrees. The WebGL camera and React Flow labels share one projection and viewport transform, so pan, zoom, and orbit remain aligned.
 
@@ -184,7 +211,7 @@ Depth is conveyed first by tonal surface shifts and thin borders, not broad drop
 
 ## Shapes
 
-The form language is compact and technical. Badges and ticks use 2px corners; 2D graph nodes use 7px; the mobile details panel uses 8px top corners; overlay silhouettes use 12–14px; dots are circular. Controls may use 4–6px corners, while category filters and connection-status indicators are intentionally pill-shaped. Three.js city blocks use crisp geometry and category-coloured outlines. Their roof-aligned custom React Flow labels are unframed by default, with a restrained neutral surface on hover or selection and 3px corners. Do not round every surface to the same radius.
+The form language is compact and technical. Badges and ticks use 2px corners; 2D graph nodes use 7px; the mobile details panel uses 8px top corners; overlay silhouettes use 12–14px; dots are circular. Controls step with size: 3px for glyphs, map labels, and small buttons, 4px for filters and buttons, 5px for inputs and grouped toolbars, 6px for search fields, segmented groups, and inspector rows. Count chips stay pill-shaped at 999px. Three.js city blocks use crisp geometry and category-coloured outlines. Their roof-aligned custom React Flow labels are unframed by default, with a restrained neutral surface on hover or selection and 3px corners. Do not round every surface to the same radius.
 
 ## Components
 
@@ -199,6 +226,8 @@ Category filters in the navbar are compact, unframed swatch controls with a shor
 ### Cards / Containers
 
 The details panel is an unshadowed `ink-1` surface with a one-pixel rule at its edge. On desktop it is 384px wide; on narrow viewports it sits at the bottom with an 8px top radius and a maximum height of `min(60dvh, calc(100dvh - 340px))`, preserving canvas space above the inspector. Sections remain in stable order so the user can scan purpose, source, calls, dependents, and symbols.
+
+The insight drawer tabs read as inspector rows: compact headers with a glyph rail, a semibold title, mono meta, and a chevron, each pushing open an evidence drawer inline with a grid-rows transition that honours reduced motion. Disclosure headers pair `aria-expanded` with `aria-controls`.
 
 ### Inputs / Fields
 
@@ -232,6 +261,7 @@ Edges use quiet neutral strokes by default and brighten on focus. Selecting a no
 - **Do** use monospace for source paths, routes, line numbers, and symbols.
 - **Do** keep visible keyboard focus and honour reduced motion in CSS and JavaScript.
 - **Do** use colour together with a badge, dash pattern, label, or other non-colour signal.
+- **Do** keep every pointer target at least 24px on each side; text buttons and tape ticks keep their small look with a larger hit area.
 - **Do** preserve stable node identity and position when code outside the changed region is unchanged.
 
 ### Don't:

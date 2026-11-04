@@ -119,7 +119,7 @@ export class GraphEngine extends EventEmitter<{ batch: [EngineBatch]; error: [Er
     this.index = new GraphIndex({ repoName: loaded.name, config: loaded.config });
     this.openStorage();
 
-    const cached = this.opts.reset || !this.storage ? new Map<string, CachedFile>() : this.storage.loadFiles(this.repoId);
+    const cached = this.loadCachedFiles();
     const updates: FileUpdate[] = [];
     const fresh: CachedFile[] = [];
     let reused = 0;
@@ -220,6 +220,11 @@ export class GraphEngine extends EventEmitter<{ batch: [EngineBatch]; error: [Er
   absolutePath(file: string): string | null {
     if (!this.index.files.has(file)) return null;
     return join(this.root, file);
+  }
+
+  /** Whether `.gitignore` / `.eyrieignore` rules ignore this repo-relative path. */
+  isIgnored(rel: string): boolean {
+    return this.rules.ignores(rel, false);
   }
 
   // ── watching ─────────────────────────────────────────────────────────────
@@ -349,6 +354,17 @@ export class GraphEngine extends EventEmitter<{ batch: [EngineBatch]; error: [Er
       fn();
     } catch (err) {
       this.log(`Could not write cache: ${(err as Error).message}`);
+    }
+  }
+
+  /** The cached facts, or an empty cache when it cannot be read: a full parse is slower, never wrong. */
+  private loadCachedFiles(): Map<string, CachedFile> {
+    if (this.opts.reset || !this.storage) return new Map<string, CachedFile>();
+    try {
+      return this.storage.loadFiles(this.repoId);
+    } catch (err) {
+      this.log(`Could not read cache, parsing every file: ${(err as Error).message}`);
+      return new Map<string, CachedFile>();
     }
   }
 

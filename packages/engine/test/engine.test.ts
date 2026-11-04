@@ -95,4 +95,19 @@ describe('GraphEngine', () => {
     expect(engine.readSource('../etc/passwd')).toBeNull();
     expect(engine.readSource('src/lib/prisma.ts')?.lines[0]).toContain('PrismaClient');
   });
+
+  it('starts several engines on one cache without locking it out', async () => {
+    // The desktop app and one MCP server per agent share the project's cache.
+    const logs: string[] = [];
+    const engines = Array.from({ length: 6 }, () => new GraphEngine({ root: dir, dataDir, watch: false, log: (m) => logs.push(m) }));
+    try {
+      await Promise.all(engines.map((e) => e.start()));
+      const shapes = engines.map((e) => `${e.stats.files}/${e.stats.archNodes}/${e.stats.archEdges}`);
+      expect(new Set(shapes).size).toBe(1);
+      expect(engines[0]!.stats.files).toBe(38);
+      expect(logs.join('\n')).not.toMatch(/database is locked|Cache disabled|Could not (read|write) cache/);
+    } finally {
+      await Promise.all(engines.map((e) => e.stop()));
+    }
+  }, 60_000);
 });

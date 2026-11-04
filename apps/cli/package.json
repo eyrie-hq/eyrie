@@ -1,0 +1,47 @@
+{
+  "name": "@eyrie-hq/cli",
+  "version": "0.1.0-rc.2",
+  "description": "Eyrie command line: index a repository and open its live architecture map, or serve it to coding agents over MCP",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "author": "Badhan Sen",
+  "homepage": "https://github.com/eyrie-hq/eyrie#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eyrie-hq/eyrie.git"
+  },
+  "bin": {
+    "eyrie": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "dist/grammars/",
+    "dist/web/"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pnpm --filter @eyrie/web build && tsx scripts/build.ts",
+    "build:bundle": "tsx scripts/build.ts",
+    "build:sea": "tsx scripts/build-sea.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "@eyrie/core": "workspace:*",
+    "@eyrie/engine": "workspace:*",
+    "@eyrie/knowledge": "workspace:*",
+    "@eyrie/lens": "workspace:*",
+    "@eyrie/parser": "workspace:*",
+    "@eyrie/server": "workspace:*",
+    "esbuild": "^0.28.2",
+    "postject": "1.0.0-alpha.6",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  }
+}

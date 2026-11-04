@@ -31,3 +31,26 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  cli:
+    # The published command: pack it, install the tarball the way a user
+    # does, and check it answers architecture_overview over MCP.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @eyrie-hq/cli build
+      - run: pnpm --filter @eyrie-hq/cli exec npm pack --pack-destination "$RUNNER_TEMP"
+      - run: pnpm --filter @eyrie-hq/cli smoke -- --tarball "$RUNNER_TEMP"/eyrie-hq-cli-*.tgz

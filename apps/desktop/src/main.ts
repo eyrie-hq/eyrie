@@ -32,7 +32,21 @@ import {
 } from 'electron';
 import started from 'electron-squirrel-startup';
 import { findCommand, findEditor, startDetached } from '@eyrie/core/commands';
+import { initAgents } from '@eyrie/server';
 import { Channel, type AddResult, type ProjectView } from './bridge.js';
+import {
+  bundledEyrie,
+  cursorSettingsPath,
+  eyrieForConnect,
+  geminiSettingsPath,
+  installCli,
+  installedEyrie,
+  mcpAddArgs,
+  mcpServerName,
+  pathHint,
+  userBinDir,
+  writeMcpSettings,
+} from './cli-setup.js';
 import { PrefStore } from './prefs.js';
 import { ProjectStore, isDirectory } from './projects.js';
 import type { FromHost, ToHost } from './protocol.js';
@@ -280,6 +294,7 @@ async function openProject(id: string): Promise<void> {
       engineOrigin = new URL(message.url).origin;
       store.recordIndex(id, message);
       void win.loadURL(message.url);
+      void promptAgentsOnce(id).catch(() => {});
     } else if (message.type === 'failed') {
       store.recordError(id, message.message);
       void closeProject();
@@ -395,6 +410,14 @@ const AI_CHOICES = [
     sends:
       'Codex sends this to OpenAI under your account and usage. Eyrie runs Codex inside a macOS sandbox that stops it reading or changing anything in your home folder, so it cannot run commands or look at your files.',
   },
+  {
+    backend: 'muse',
+    name: 'Muse',
+    command: 'muse',
+    install: 'Commit analysis runs your Muse CLI. Install it and sign in by running `muse` once in a terminal, then try again.',
+    sends:
+      'Muse sends this to the model provider you signed in with, under your account and usage. Eyrie runs it with writing, shell commands and web access turned off, in a folder outside your repositories, so it cannot run commands or look at your files.',
+  },
 ] as const;
 type AiChoice = (typeof AI_CHOICES)[number];
 
@@ -443,13 +466,129 @@ const MCP_CLIENTS = [
   { command: 'codex', name: 'Codex' },
 ] as const;
 
-/** `<client> mcp add` for this project, running the CLI from this checkout of Eyrie. Unpackaged only: the app ships no CLI yet. */
+/** `<client> mcp add` for this project, running the CLI from this checkout of Eyrie. Only when the app has no shipped `eyrie` of its own. */
 function mcpCommand(project: { name: string; root: string }, client: (typeof MCP_CLIENTS)[number]): string | null {
-  if (app.isPackaged) return null;
+  if (app.isPackaged || bundledEyrie(resourcesDir()) || installedEyrie()) return null;
   const repo = join(app.getAppPath(), '..', '..');
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-  const name = `eyrie-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project'}`;
-  return `${client.command} mcp add ${name} -- ${quote(join(repo, 'node_modules', '.bin', 'tsx'))} ${quote(join(repo, 'packages', 'server', 'src', 'cli.ts'))} mcp ${quote(project.root)}`;
+  return `${client.command} mcp add ${mcpServerName(project.name)} -- ${quote(join(repo, 'node_modules', '.bin', 'tsx'))} ${quote(join(repo, 'packages', 'server', 'src', 'cli.ts'))} mcp ${quote(project.root)}`;
+}
+
+/** Copies the shipped `eyrie` command where the user can run it, and says how to reach it. */
+function installEyrieCommand(): void {
+  if (!window) return;
+  try {
+    const bin = installCli(resourcesDir());
+    void dialog.showMessageBox(window, {
+      type: 'info',
+      buttons: ['OK'],
+      message: 'The eyrie command is installed.',
+      detail: `${bin}\n\n${pathHint(userBinDir())}\n\nCoding-agent connections made from now on use this copy, which survives app updates.`,
+    });
+  } catch (err) {
+    dialog.showErrorBox('Could not install the eyrie command', (err as Error).message);
+  }
+}
+
+const CONNECT_CLIENTS = [
+  { id: 'claude', name: 'Claude Code' },
+  { id: 'codex', name: 'Codex' },
+  { id: 'gemini', name: 'Gemini CLI' },
+  { id: 'cursor', name: 'Cursor' },
+] as const;
+type ConnectClient = (typeof CONNECT_CLIENTS)[number];
+
+/** Connects a coding agent to a project over MCP, after asking. Runs `<client> mcp add`, or writes the client's settings file. */
+async function connectAgent(project: { name: string; root: string }, client: ConnectClient): Promise<void> {
+  if (!window) return;
+  const bin = eyrieForConnect(resourcesDir());
+  if (!bin) {
+    dialog.showErrorBox(`Could not connect ${client.name}`, 'The app was built without the eyrie command.');
+    return;
+  }
+  const name = mcpServerName(project.name);
+  if (client.id === 'claude' || client.id === 'codex') {
+    if (!findCommand(client.id, shellPath() ?? '')) {
+      dialog.showErrorBox(`${client.name} is not installed`, `Install ${client.name} and sign in by running \`${client.id}\` once in a terminal, then try again.`);
+      return;
+    }
+    const { command, args } = mcpAddArgs(client.id, name, bin, project.root);
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'question',
+      buttons: ['Connect', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Connect ${client.name} to ${project.name}?`,
+      detail: `This runs:\n\n${command} ${args.join(' ')}\n\n${client.name} can then ask Eyrie what files belong to, what depends on them, and what its edits changed. Eyrie answers from parsed code on this machine; it sends nothing anywhere.`,
+    });
+    if (response !== 0) return;
+    try {
+      execFileSync(command, args, { env: { ...process.env, PATH: shellPath() ?? process.env.PATH } });
+    } catch (err) {
+      dialog.showErrorBox(`Could not connect ${client.name}`, (err as Error).message);
+      return;
+    }
+    void dialog.showMessageBox(window, { type: 'info', buttons: ['OK'], message: `${client.name} is connected.`, detail: `It reaches ${project.name} as "${name}".` });
+    return;
+  }
+  const file = client.id === 'gemini' ? geminiSettingsPath() : cursorSettingsPath();
+  const { response } = await dialog.showMessageBox(window, {
+    type: 'question',
+    buttons: ['Connect', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Connect ${client.name} to ${project.name}?`,
+    detail: `This adds "${name}" to ${file}, keeping your other servers. ${client.name} can then ask Eyrie about this project's architecture. Eyrie answers from parsed code on this machine; it sends nothing anywhere.`,
+  });
+  if (response !== 0) return;
+  try {
+    writeMcpSettings(file, name, { command: bin, args: ['mcp', project.root] });
+  } catch (err) {
+    dialog.showErrorBox(`Could not connect ${client.name}`, (err as Error).message);
+    return;
+  }
+  void dialog.showMessageBox(window, { type: 'info', buttons: ['OK'], message: `${client.name} is connected.`, detail: `It reaches ${project.name} as "${name}". Restart ${client.name} if it is already running.` });
+}
+
+/**
+ * Once per project, after its first map: offers to tell the project's coding
+ * agents about Eyrie's MCP tools (`eyrie init-agents`). The map is already
+ * showing; this is a question, not a gate.
+ */
+async function promptAgentsOnce(id: string): Promise<void> {
+  const project = store.get(id);
+  if (!project || !window || project.agentsPromptedAt) return;
+  store.markAgentsPrompted(id);
+  notify();
+  const { response } = await dialog.showMessageBox(window, {
+    type: 'question',
+    buttons: ['Add to AGENTS.md', 'Local only', 'Not now'],
+    defaultId: 0,
+    cancelId: 2,
+    message: `Tell ${project.name}'s coding agents about Eyrie?`,
+    detail:
+      'Eyrie adds a short marked section to the project, telling coding agents to ask it what files belong to and what depends on them before editing, and what their edits changed afterwards.\n\nAdd to AGENTS.md commits the section with the repository, for every agent and teammate. Local only writes CLAUDE.local.md and keeps it out of git instead.',
+  });
+  if (response === 2) return;
+  try {
+    const result = initAgents(project.root, { local: response === 1 });
+    void dialog.showMessageBox(window, { type: 'info', buttons: ['OK'], message: 'Coding agents will hear about Eyrie.', detail: result.file });
+  } catch (err) {
+    dialog.showErrorBox('Could not write the agent instructions', (err as Error).message);
+  }
+}
+
+/** The Connect menu for a project, or null when there is no `eyrie` command to connect with. */
+function connectMenu(project: { name: string; root: string }): MenuItemConstructorOptions | null {
+  if (!eyrieForConnect(resourcesDir())) return null;
+  return {
+    label: 'Connect Coding Agents',
+    submenu: [
+      { label: 'Install eyrie Command…', click: () => installEyrieCommand() },
+      { type: 'separator' },
+      ...CONNECT_CLIENTS.map((client): MenuItemConstructorOptions => ({ label: `Connect ${client.name}`, click: () => void connectAgent(project, client) })),
+    ],
+  };
 }
 
 /** The project's actions as a native menu, for its ⋯ button and a right-click on its row. */
@@ -460,6 +599,7 @@ function showProjectMenu(id: string, at?: { x: number; y: number }): void {
   const scanning = scans.has(id);
   const missing = !isDirectory(project.root);
   const editor = findEditor(shellPath() ?? '', process.env.EYRIE_EDITOR);
+  const connect = connectMenu(project);
   const template: MenuItemConstructorOptions[] = [
     { label: isLive ? 'Return to Map' : 'Open', enabled: !missing, click: () => void openProject(id) },
     scanning
@@ -470,10 +610,12 @@ function showProjectMenu(id: string, at?: { x: number; y: number }): void {
     { label: editor ? `Open in ${editor.name}` : 'Open in Editor', enabled: !missing && !!editor, click: () => openInEditor(project.root) },
     { label: REVEAL_LABEL, enabled: !missing, click: () => shell.showItemInFolder(project.root) },
     { label: 'Copy Path', click: () => clipboard.writeText(project.root) },
-    ...MCP_CLIENTS.flatMap((client) => {
-      const command = mcpCommand(project, client);
-      return command ? [{ label: `Copy MCP Command for ${client.name}`, click: () => clipboard.writeText(command) }] : [];
-    }),
+    ...(connect
+      ? [connect]
+      : MCP_CLIENTS.flatMap((client) => {
+          const command = mcpCommand(project, client);
+          return command ? [{ label: `Copy MCP Command for ${client.name}`, click: () => clipboard.writeText(command) }] : [];
+        })),
     { type: 'separator' },
     ...aiChoices().map(
       (choice): MenuItemConstructorOptions => ({ label: `Analyse Commits with ${choice.name}`, type: 'checkbox', checked: project.ai === choice.backend, enabled: !missing, click: () => void toggleAi(id, choice) }),

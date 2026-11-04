@@ -12,6 +12,8 @@ import {
   type ServerMessage,
 } from '@eyrie/core';
 import { SYSTEM_ID_PREFIX, systemIdOf, type FocusMode } from '@eyrie/lens';
+import type { HealthSummaryView } from '../lib/findings';
+import type { RecentView } from '../lib/sessions';
 import { readPref, writePref } from './prefs';
 
 export type ConnectionStatus = 'connecting' | 'live' | 'reconnecting' | 'unauthorized';
@@ -20,6 +22,25 @@ export type { FocusMode } from '@eyrie/lens';
 export type ViewMode = '2d' | '3d';
 /** Which question the map answers: how it is built, how data moves, what one request does, or what the system's parts are. */
 export type Lens = 'architecture' | 'dataflow' | 'sequence' | 'system';
+/** The insight drawer's tabs: a model's answer, security findings, or recent agent work. */
+export type DrawerTab = 'ask' | 'health' | 'recent';
+export type HighlightSource = 'ask' | 'health' | 'recent';
+
+/**
+ * One thing the drawer points at on the map: an answer's steps, one finding,
+ * or a session's changed components. Lenses, 2D, 3D and trace modes all read
+ * this one field: the ids get a ring and a mark, the path's edges run heavier,
+ * and the rest of the map dims.
+ */
+export interface InsightHighlight {
+  source: HighlightSource;
+  ids: string[];
+  /** The mark on each id: a step number, `!`, `+`, `−` or `~`. */
+  labels?: Record<string, string>;
+  /** The cited path through the map, in order. */
+  path?: string[];
+  description?: string;
+}
 
 const VIEW_KEY = 'eyrie-view';
 const LENS_KEY = 'eyrie-lens';
@@ -72,6 +93,19 @@ export interface State {
   lens: Lens;
   /** Component the sequence view traces from. */
   sequenceEntry: string | null;
+  /** What the insight drawer currently points at on the map. */
+  highlight: InsightHighlight | null;
+  drawer: { open: boolean; tab: DrawerTab };
+  /** A row the drawer should open on mount: the Panel's deep-link into a tab. Consumed once. */
+  drawerSelection: { tab: DrawerTab; id: string } | null;
+  /** The last health check: read by the Health tab, the top-bar counter and the Panel. */
+  health: HealthSummaryView | null;
+  healthLoading: boolean;
+  healthError: string | null;
+  /** Recorded agent sessions: read by the Recent tab, the top-bar counter, the Panel and the tape. */
+  recent: RecentView | null;
+  recentLoading: boolean;
+  recentError: string | null;
 }
 
 const MARK_MS = 4500;
@@ -100,6 +134,15 @@ class Store {
     view: savedView(),
     lens: savedLens(),
     sequenceEntry: null,
+    highlight: null,
+    drawer: { open: false, tab: 'ask' },
+    drawerSelection: null,
+    health: null,
+    healthLoading: false,
+    healthError: null,
+    recent: null,
+    recentLoading: false,
+    recentError: null,
   };
   private listeners = new Set<Listener>();
   private markTimers = new Map<string, number>();
@@ -150,6 +193,58 @@ class Store {
   setSequenceEntry = (sequenceEntry: string | null) => this.set({ sequenceEntry });
   setQuery = (query: string) => this.set({ query });
   setHoverFrame = (hoverFrame: number | null) => this.set({ hoverFrame });
+  setHighlight = (highlight: InsightHighlight | null) => {
+    if (this.state.highlight !== highlight) this.set({ highlight });
+  };
+  clearHighlight = () => {
+    if (this.state.highlight) this.set({ highlight: null });
+  };
+  openDrawer = (tab: DrawerTab) => this.set({ drawer: { open: true, tab } });
+  openDrawerSelection = (tab: DrawerTab, id: string) => this.set({ drawer: { open: true, tab }, drawerSelection: { tab, id } });
+  /** Reads and clears the pending drawer selection, if any. */
+  takeDrawerSelection = (): { tab: DrawerTab; id: string } | null => {
+    const selection = this.state.drawerSelection;
+    if (selection) this.set({ drawerSelection: null });
+    return selection;
+  };
+  closeDrawer = () => {
+    if (this.state.drawer.open) this.set({ drawer: { ...this.state.drawer, open: false } });
+  };
+  setDrawerTab = (tab: DrawerTab) => this.set({ drawer: { open: true, tab } });
+
+  private healthRun: Promise<void> | null = null;
+
+  /** Runs the health check once; concurrent callers share the run. */
+  loadHealth = (): Promise<void> => {
+    this.healthRun ??= (async () => {
+      this.set({ healthLoading: true, healthError: null });
+      try {
+        this.set({ health: await api<HealthSummaryView>('/api/check'), healthLoading: false });
+      } catch (err) {
+        this.set({ healthLoading: false, healthError: (err as Error).message });
+      } finally {
+        this.healthRun = null;
+      }
+    })();
+    return this.healthRun;
+  };
+
+  private recentRun: Promise<void> | null = null;
+
+  /** Loads recorded sessions once; concurrent callers share the run. */
+  loadRecent = (): Promise<void> => {
+    this.recentRun ??= (async () => {
+      this.set({ recentLoading: true, recentError: null });
+      try {
+        this.set({ recent: await api<RecentView>('/api/recent'), recentLoading: false });
+      } catch (err) {
+        this.set({ recentLoading: false, recentError: (err as Error).message });
+      } finally {
+        this.recentRun = null;
+      }
+    })();
+    return this.recentRun;
+  };
   toggleCategory = (cat: ArchCategory) => {
     const hidden = new Set(this.state.hidden);
     if (hidden.has(cat)) hidden.delete(cat);

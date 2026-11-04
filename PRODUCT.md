@@ -8,12 +8,13 @@ web
 
 ## Users
 
-All users are technical, run Eyrie on their own machine from the command line, and already have the repository checked out. There is no non-technical persona and no multi-user surface.
+All users are technical, run Eyrie on their own machine (from the command line, the desktop app, or through their coding agent), and already have the repository checked out. There is no non-technical persona and no multi-user surface.
 
 | User | Job they are doing |
 | --- | --- |
 | **Developer new to a repository** | See the major components and how a request travels, without reading every file |
 | **Developer operating a coding agent** | See what an agent just added, changed or removed, and whether it was wired into the right place |
+| **Developer checking an app before it ships** | See the structural security mistakes the graph can prove: a public route that writes data with no auth guard on its path, a server secret reaching the browser, a webhook that never verifies its signature |
 | **Developer about to make a risky change** | Know what calls a component and what breaks if it changes |
 | **Tech lead / reviewer** | Check whether a change respects the intended layering (UI → API → logic → data) |
 
@@ -25,9 +26,9 @@ Eyrie parses a repository locally, builds a code knowledge graph, derives a smal
 
 Success means: an unfamiliar ~300-file repository becomes legible in under a minute; the map is still true after an hour of editing; and a developer can trust it enough to make an impact decision from it.
 
-It is a desktop-class developer tool delivered today as a CLI that serves a local web UI (`pnpm start -- /path/to/repo` → `http://127.0.0.1:4319`). It is not a hosted service.
+It is a desktop-class developer tool delivered today as a CLI that serves a local web UI (`pnpm start -- /path/to/repo` → `http://127.0.0.1:4319`). It is not a hosted service. Planned: one `eyrie` command shipped two ways, inside the desktop app and as the npm package `@eyrie-hq/cli`, so neither people nor agents need a source checkout ([06·M](docs/06-implementation-plan/feature-mcp-desktop/README.md), [06·H](docs/06-implementation-plan/agentic-health-graph/README.md)).
 
-Non-goal: becoming a general code-search or code-review product. Eyrie answers *structural* questions.
+Non-goal: becoming a general code-search or code-review product. Eyrie answers *structural* questions. The planned Health check stays inside that line: it reports only what a parsed fact or a path in the graph proves, and calls itself a check, not a security audit.
 
 ## Positioning
 
@@ -46,14 +47,14 @@ The third position, increasingly the point: **codebases are now modified by agen
 - The UI is the only surface. Six lanes in request order — UI → Edge → API → Logic → Data → External — are product vocabulary, not a layout choice.
 - Four lenses over one graph, from the whole system down to one request: System, Architecture, Data flow, Sequence. Plus a 2D map and a 3D "city" view where block height is lines of code.
 - Round-trip to the editor is part of the workflow: `POST /api/open` launches the first of `cursor`, `code`, `windsurf`, `zed` found on `PATH`, or `EYRIE_EDITOR`, at the right line.
-- Coding agents reach the same graph over MCP (`eyrie mcp`, stdio, read-only tools), so an agent can ask what a file belongs to and what depends on it before an edit, and what its edits changed afterwards.
+- Coding agents reach the same graph over MCP (`eyrie mcp`, stdio), so an agent can ask what a file belongs to and what depends on it before an edit, and what its edits changed afterwards. Agents can also ask grounded questions (`ask`), get findings for the files they just changed (`check`), and record the task they are working on (`record_intent`).
 - Two `localStorage` keys hold UI preferences the user set themselves. No other client state.
 
 ## Capabilities and Constraints
 
-**Shipped (Phases 1–2, end to end):** repository indexing with content-hash caching; the six-lane architecture map; all four lenses; 2D and 3D views; live updates with diff-driven animation and the change tape; details panel (purpose, source preview, open in editor, calls / used by, symbols); trace (downstream) and impact (upstream); search, category filters, fit, keyboard navigation. Also shipped: the MCP server for coding agents; commit history in a durable `knowledge.db` (each commit mapped onto the components it touched, with agent co-authors from `Co-Authored-By`); optional AI notes per commit through the user's Claude Code or Codex CLI; the desktop app's Projects page.
+**Shipped (Phases 1–2, end to end):** repository indexing with content-hash caching; the six-lane architecture map; all four lenses; 2D and 3D views; live updates with diff-driven animation and the change tape; details panel (purpose, source preview, open in editor, calls / used by, symbols); trace (downstream) and impact (upstream); search, category filters, fit, keyboard navigation. Also shipped: the MCP server for coding agents; commit history in a durable `knowledge.db` (each commit mapped onto the components it touched, with agent co-authors from `Co-Authored-By`); optional AI notes per commit through the user's Claude Code or Codex CLI; the desktop app's Projects page. Also shipped ([06·M](docs/06-implementation-plan/feature-mcp-desktop/README.md), [06·H](docs/06-implementation-plan/agentic-health-graph/README.md)): one `eyrie` command for the app and npm; agent onboarding with `eyrie init-agents`; the insight drawer (Ask the map, the Health check, Recent work by agent session) with `ask`, `check` and `record_intent` MCP tools.
 
-**Planned:** collapse/expand and semantic zoom (3); path finding in the UI and code-level impact (4); architecture rules, findings and AI explanations of them (5, the Knowledge Loop); git overlays, branch/commit diffs, timeline (6); feeding new violations back to agents through an MCP `check` tool and agent hooks (7); an Electron desktop app (Electron Forge) running the engine in a utility process. A first, unsigned version packages and runs on macOS from `apps/desktop`; it is not distributed.
+**Planned:** collapse/expand and semantic zoom (3); path finding in the UI and code-level impact (4); architecture rules, findings and AI explanations of them (5, the Knowledge Loop); git overlays, branch/commit diffs, timeline (6); agent hooks (7); an Electron desktop app (Electron Forge) running the engine in a utility process. A first, unsigned version packages and runs on macOS from `apps/desktop`; it is not distributed.
 
 **Detection is heuristic but inspectable.** Classification follows framework conventions and names (Next.js App/Pages Router, `'use server'`, Express-style routers, `*Service`/`*Repository`, React components, hooks). Presentational components, hooks, helpers and SDK wrappers are lifted out and edges pass through them, so a typical app reduces to 20–50 components. A doc comment on a component's main export overrides the derived description.
 
@@ -61,19 +62,20 @@ The third position, increasingly the point: **codebases are now modified by agen
 
 - Languages: TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust. JavaScript (Next.js, Node.js) has the deepest support; Kotlin, Swift and C/C++ are not parsed.
 - No control-flow analysis — so no branch, retry or terminal-state workflow views.
-- No editing code from the map. Eyrie reads; your editor writes.
+- No editing code from the map. Eyrie reads; your editor or agent writes. The one planned exception is agent setup, and only when the user asks: Eyrie may add itself to a coding agent's MCP configuration and write a marked, git-excluded section in `CLAUDE.local.md` or `AGENTS.md`. It never writes source code.
 - No cloud component, no account system, no telemetry.
-- Requires Node.js 22.13+ and pnpm 9.
+- From source: Node.js 22.13+ and pnpm 9. The planned npm CLI needs only Node.js 22.13+; the desktop app needs neither.
 - Server binds `127.0.0.1`, requires a random per-run token, and rejects non-local `Host` headers (403) as DNS-rebinding protection. The source endpoint serves a file only if it is in the index, so `.env` files, keys and git-ignored paths are unreachable through it.
 
 **Confirmed change to the privacy posture, now in effect.** With AI notes off — the default — Eyrie makes **no network requests at all**. With notes turned on for a project, Eyrie runs the user's own Claude Code or Codex CLI, which sends commit messages, author names, changed paths with line counts and component names (never source code) to Anthropic or OpenAI under the user's account. Neither model may act on the machine: Claude Code runs with no tools, and Codex, whose command tool cannot be removed, runs inside a macOS sandbox in which no command can start. That is the only path by which data leaves the machine, and it is opt-in per project with the content stated before it is turned on. Remote inference remains an accepted direction for further AI features. Consequences future work must honour:
 
 - Do not write copy claiming Eyrie *will never* make network requests, or that code can never leave the machine. State today's behaviour as today's behaviour.
-- AI annotates the graph — summaries, grouping suggestions, Q&A. It never becomes a source of truth for whether a dependency exists. That boundary is not affected by where the model runs.
+- AI annotates the graph — summaries, grouping suggestions, Q&A. It never becomes a source of truth for whether a dependency exists, and never decides what counts as a finding. An answer may cite only components that Eyrie's own tools returned. That boundary is not affected by where the model runs.
+- Planned AI backends that call a provider's API directly (first the Meta Model API, for Ask the map) follow the same rules as the notes: off by default and opt-in per project; the key held by the user outside the repository; the content sent named before it is turned on (the question, component names, paths and graph tool results, never source code); the model named on every answer.
 - No telemetry remains out of scope regardless. The AI decision covers inference, not analytics.
 - This decision supersedes the open question in [docs/01 §9](docs/01-product-requirements/README.md); the README privacy section and PRD scope list still assert the absolute and will need updating.
 
-**Explicitly open:** whether classification rules become user-extensible via config; whether unjoined Express router prefixes (`app.use('/api', router)`) are a correctness fix or a documented limitation; whether the desktop app gates a wider release or the CLI remains primary distribution.
+**Explicitly open:** whether classification rules become user-extensible via config; whether unjoined Express router prefixes (`app.use('/api', router)`) are a correctness fix or a documented limitation; whether the app's bundled `eyrie` command is a bundled Node or a single executable.
 
 ## Brand Commitments
 
@@ -93,17 +95,17 @@ The third position, increasingly the point: **codebases are now modified by agen
 - **Measured contrast ratios** for every token in both colour schemes, in [docs/07 §11](docs/07-launch-readiness/README.md).
 - **Licence inventory** of the installed dependency tree, in [docs/07 §15](docs/07-launch-readiness/README.md).
 
-**Absences that must not be fabricated:** no users, no customers, no testimonials, no press, no adoption numbers, no benchmarks, no pricing, no hosted demo, no public website, no published binary, no launch date. The "20–50 components for a typical app" figure is currently **unevidenced** and flagged as such in docs/07 §13 — measure it before repeating it as a claim.
+**Absences that must not be fabricated:** no users, no customers, no testimonials, no press, no adoption numbers, no benchmarks, no pricing, no hosted demo, no public website, no published binary or npm package, no launch date. The "20–50 components for a typical app" figure is currently **unevidenced** and flagged as such in docs/07 §13 — measure it before repeating it as a claim.
 
 **Launch status: Hold.** Two actions are open before public launch ([docs/07](docs/07-launch-readiness/README.md) actions 10 and 11): screen-reader structure and information, and readability — `--color-faint` fails AA at the sizes it is used. Do not describe Eyrie as launched or publicly available.
 
 ## Product Principles
 
-1. **Static analysis is the only source of truth for structure.** AI may annotate the graph; it may never assert that a dependency exists. Every edge traces to a parsed fact with a confidence score.
+1. **Static analysis is the only source of truth for structure.** AI may annotate the graph; it may never assert that a dependency exists. Every edge traces to a parsed fact with a confidence score. Findings work the same way: a deterministic rule decides what is a finding; AI may only explain one.
 2. **A stale map is worse than no map.** Liveness is the feature. Incremental correctness — invalidating exactly the dependents and nothing more — is what makes it possible.
 3. **Stable identity over fresh layout.** Unchanged components keep their position and their id. The user's mental model of the map is an asset the tool must not disturb.
 4. **Local by default; explicit about every exception.** The engine, cache and UI are local, the server is locked to the loopback interface, and anything that later leaves the machine must be something the user turned on knowingly and the interface names plainly.
-5. **Eyrie reads; your editor writes.** It answers structural questions and hands off to the editor. It does not expand into search, review, or authoring.
+5. **Eyrie reads; your editor or agent writes.** It answers structural questions and hands off: to the editor at the right line, or to a coding agent as a ready-made prompt. It does not expand into search, review, or authoring. Agent setup files, written only on request, are the one exception.
 
 ## Accessibility & Inclusion
 

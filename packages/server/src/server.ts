@@ -5,12 +5,18 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { GraphEvent, ServerMessage } from '@eyrie/core';
 import { findCommand, findEditor, startDetached } from '@eyrie/core/commands';
 import type { EngineBatch, GraphEngine } from '@eyrie/engine';
-import { commitView, type ProjectKnowledge } from '@eyrie/knowledge';
+import { commitView, type AiBackend, type ProjectKnowledge } from '@eyrie/knowledge';
+import { answerQuestion, resolveAskBackend } from './ask.js';
+import { runHealthCheck } from './check.js';
+import { EyrieMcp } from './mcp.js';
+import { recentSessions } from './recent.js';
 
 export interface ServerOptions {
   engine: GraphEngine;
   /** The project's recorded git history, served at /api/commits. */
   knowledge?: ProjectKnowledge;
+  /** The model POST /api/ask answers with. Without one, asking reports that AI is off. */
+  ai?: AiBackend | null;
   host: string;
   port: number;
   /** Required on every API and WebSocket request. */
@@ -90,6 +96,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       });
     });
 
+  // One MCP server behind the HTTP API, so a question sees the same graph an agent sees.
+  // The engine has indexed by the time the server listens, so `ready` resolves at once.
+  let mcp: EyrieMcp | null = null;
+  const askMcp = (): EyrieMcp => (mcp ??= new EyrieMcp({ engine, ready: Promise.resolve({ knowledge: opts.knowledge }), version: 'http', ai: opts.ai ?? null }));
+
   const api = async (req: IncomingMessage, res: ServerResponse, url: URL) => {
     const path = url.pathname;
     if (req.method === 'GET' && path === '/api/state') {
@@ -125,6 +136,35 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       if (!abs) return json(res, 404, { error: 'not an indexed source file' });
       const opened = openInEditor(abs, Number(body.line) || 1);
       return json(res, opened ? 200 : 501, { opened });
+    }
+    if (req.method === 'GET' && path === '/api/check') {
+      return json(res, 200, await runHealthCheck(engine));
+    }
+    if (req.method === 'GET' && path === '/api/recent') {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+      return json(res, 200, recentSessions(opts.knowledge ?? null, limit));
+    }
+    if (req.method === 'GET' && path === '/api/ask') {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+      return json(res, 200, { backend: opts.ai?.name ?? null, questions: opts.knowledge?.store.askHistory(limit) ?? [] });
+    }
+    if (req.method === 'POST' && path === '/api/ask') {
+      const body = (await readBody(req)) as { question?: string; backend?: string };
+      if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 2000) {
+        return json(res, 400, { error: 'Ask a question of at most 2000 characters.' });
+      }
+      let backend: AiBackend | null;
+      try {
+        backend = resolveAskBackend(opts.ai ?? null, body.backend);
+      } catch (err) {
+        return json(res, 400, { error: (err as Error).message });
+      }
+      if (!backend) return json(res, 501, { error: 'AI is off. Start Eyrie with --ai, or pick a backend.' });
+      try {
+        return json(res, 200, await answerQuestion({ mcp: askMcp(), knowledge: opts.knowledge ?? null, backend, question: body.question, log }));
+      } catch (err) {
+        return json(res, 500, { error: (err as Error).message });
+      }
     }
     return json(res, 404, { error: 'unknown endpoint' });
   };
@@ -192,6 +232,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     port,
     close: async () => {
       engine.off('batch', broadcast);
+      mcp?.dispose();
       for (const c of wss.clients) c.terminate();
       wss.close();
       await new Promise<void>((r) => server.close(() => r()));

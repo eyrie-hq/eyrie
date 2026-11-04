@@ -10,6 +10,8 @@ export interface Highlight {
   matches: Set<string> | null;
   /** Nodes touched by the hovered change-tape frame. */
   frame: Set<string> | null;
+  /** What the insight drawer points at: ringed ids with marks, and a path whose edges run heavier. */
+  insight: { source: string; ids: Set<string>; labels: Map<string, string>; path: string[] } | null;
 }
 
 export interface RendererCallbacks {

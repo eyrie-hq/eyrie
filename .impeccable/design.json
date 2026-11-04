@@ -32,6 +32,9 @@
       "graph-title": { "displayName": "Graph Title", "purpose": "React Flow component labels at 14px, weight 650, and 20px line height." },
       "city-title": { "displayName": "City Title", "purpose": "Roof-aligned custom React Flow city labels at 18px, weight 650, and 24px line height in scene coordinates, using the block camera projection." },
       "body": { "displayName": "Body", "purpose": "Interface prose." },
+      "compact": { "displayName": "Compact", "purpose": "Drawer and panel rows, finding cards, buttons." },
+      "small": { "displayName": "Small", "purpose": "Bylines, chips, secondary rows." },
+      "micro": { "displayName": "Micro", "purpose": "Timestamps, severities, hashes, compact metadata." },
       "label": { "displayName": "Technical Label", "purpose": "Repository identifiers and compact metadata in Fragment Mono." }
     },
     "shadows": [
@@ -113,7 +116,8 @@
         "Do use monospace for source paths, routes, line numbers, and symbols.",
         "Do keep visible keyboard focus and honour reduced motion in CSS and JavaScript.",
         "Do use colour together with a badge, dash pattern, label, or other non-colour signal.",
-        "Do preserve stable node identity and position when code outside the changed region is unchanged."
+        "Do preserve stable node identity and position when code outside the changed region is unchanged.",
+        "Do keep every pointer target at least 24px on each side; text buttons and tape ticks keep their small look with a larger hit area."
       ],
       "donts": [
         "Don't use category hues as decoration or swap their meanings.",

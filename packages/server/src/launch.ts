@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GraphEngine } from '@eyrie/engine';
 import { ProjectKnowledge, type AiBackend } from '@eyrie/knowledge';
@@ -37,9 +38,15 @@ export interface RunningEyrie {
   close(): Promise<void>;
 }
 
-/** The web UI as built in this repository. A bundled host (the desktop app) passes its own `webDir`. */
+/** The web UI as built in this repository. A bundled host (the desktop app, the npm CLI) passes its own `webDir`. */
 function defaultWebDir(): string {
-  return fileURLToPath(new URL('../../../apps/web/dist', import.meta.url));
+  try {
+    return fileURLToPath(new URL('../../../apps/web/dist', import.meta.url));
+  } catch {
+    // A bundle with no repository around it (and no webDir passed): the
+    // server reports the UI as not built instead of crashing.
+    return join('apps', 'web', 'dist', '__missing__');
+  }
 }
 
 /**
@@ -59,7 +66,7 @@ export async function launch(opts: LaunchOptions): Promise<RunningEyrie> {
   const webDir = opts.webDir ?? defaultWebDir();
   let server: RunningServer;
   try {
-    server = await listen(opts.port, (port) => startServer({ engine, knowledge, host, port, token, webDir, log }));
+    server = await listen(opts.port, (port) => startServer({ engine, knowledge, ai: opts.ai ?? null, host, port, token, webDir, log }));
   } catch (err) {
     await knowledge.close();
     await engine.stop();

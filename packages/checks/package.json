@@ -1,0 +1,13 @@
+{
+  "name": "@eyrie/checks",
+  "version": "0.1.0",
+  "description": "Health rules over the architecture graph: pure functions from facts to findings",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@eyrie/core": "workspace:*"
+  }
+}
