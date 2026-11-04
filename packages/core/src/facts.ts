@@ -18,6 +18,14 @@ export type SourceLanguage =
   | 'csharp'
   | 'php'
   | 'ruby'
+  | 'kotlin'
+  | 'swift'
+  | 'c'
+  | 'cpp'
+  | 'dart'
+  | 'vue'
+  | 'objc'
+  | 'lua'
   | 'prisma';
 
 /** A data model declared in a schema file (Prisma model, Drizzle table, ...). */

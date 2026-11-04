@@ -39,7 +39,7 @@ export type Resolution =
   /** `local` = relative or aliased; it may resolve once the file exists. */
   | { kind: 'unresolved'; local: boolean };
 
-const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
 const ASSET = /\.(json|css|scss|sass|less|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|md|mdx|txt|html|wasm|graphql|gql|yaml|yml)$/i;
 
 const LANGUAGE_BY_EXT: Record<string, SourceLanguage> = {
@@ -51,11 +51,25 @@ const LANGUAGE_BY_EXT: Record<string, SourceLanguage> = {
   php: 'php',
   rb: 'ruby',
   rake: 'ruby',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  swift: 'swift',
+  dart: 'dart',
+  c: 'c',
+  h: 'cpp',
+  cpp: 'cpp',
+  cc: 'cpp',
+  cxx: 'cpp',
+  hpp: 'cpp',
+  hh: 'cpp',
+  hxx: 'cpp',
+  m: 'objc',
+  lua: 'lua',
 };
 /** Languages whose imports name a type or namespace rather than a file. */
-const QUALIFIED = new Set<string>(['java', 'csharp', 'php']);
-/** Languages where a bare type name can be visible repo-wide (Rails autoloading, PHP / C# / Java fallbacks). */
-const GLOBAL_TYPES = new Set<string>(['ruby', 'php', 'csharp', 'java']);
+const QUALIFIED = new Set<string>(['java', 'csharp', 'php', 'kotlin']);
+/** Languages where a bare type name can be visible repo-wide (Rails autoloading, PHP / C# / Java / Kotlin fallbacks). */
+const GLOBAL_TYPES = new Set<string>(['ruby', 'php', 'csharp', 'java', 'kotlin']);
 const TYPE_KINDS = new Set(['class', 'interface', 'enum', 'type']);
 const PY_SOURCE_ROOTS = new Set(['', 'src', 'lib', 'app']);
 
@@ -79,6 +93,19 @@ interface Indexes {
   types: Map<string, string[]>;
   /** `lang:a.b` — leading namespace segments declared in this repo. */
   nsRoots: Set<string>;
+  /** Directory → its Swift files. */
+  swiftDirs: Map<string, string[]>;
+  /** `Sources/<Target>` → the target's Swift files. */
+  swiftTargets: Map<string, string[]>;
+}
+
+/**
+ * A Swift file's target root: everything under `Sources/<Target>` (or
+ * `Tests/<Target>`) is one module whose files see each other.
+ */
+function swiftTargetRoot(file: string): string | null {
+  const m = /(Sources|Tests)\/[^/]+/.exec(file);
+  return m ? m[0]! : null;
 }
 
 const push = (map: Map<string, string[]>, key: string, value: string) => {
@@ -156,6 +183,11 @@ export class ModuleResolver {
     const lang = languageOfPath(file);
     const idx = this.index();
     if (lang === 'go') return (idx.goDirs.get(dirname(file)) ?? []).filter((f) => f !== file);
+    if (lang === 'swift') {
+      const target = swiftTargetRoot(file);
+      const files = target ? (idx.swiftTargets.get(target) ?? []) : (idx.swiftDirs.get(dirname(file)) ?? []);
+      return files.filter((f) => f !== file);
+    }
     if (!QUALIFIED.has(lang)) return [];
     const ns = this.factsOf(file)?.namespace;
     const same = idx.namespaces.get(`${lang}:${ns ?? ''}`) ?? [];
@@ -172,13 +204,18 @@ export class ModuleResolver {
 
   private index(): Indexes {
     if (this.indexes) return this.indexes;
-    const idx: Indexes = { pyModules: new Map(), goDirs: new Map(), qualified: new Map(), namespaces: new Map(), types: new Map(), nsRoots: new Set() };
+    const idx: Indexes = { pyModules: new Map(), goDirs: new Map(), qualified: new Map(), namespaces: new Map(), types: new Map(), nsRoots: new Set(), swiftDirs: new Map(), swiftTargets: new Map() };
     const pyPackages = new Set<string>();
     for (const f of this.files) if (f.endsWith('/__init__.py') || f === '__init__.py') pyPackages.add(dirname(f));
     for (const f of this.files) {
       const lang = languageOfPath(f);
       if (lang === 'python') this.indexPython(idx, f, pyPackages);
       else if (lang === 'go' && !f.endsWith('_test.go')) push(idx.goDirs, dirname(f), f);
+      else if (lang === 'swift') {
+        push(idx.swiftDirs, dirname(f), f);
+        const target = swiftTargetRoot(f);
+        if (target) push(idx.swiftTargets, target, f);
+      }
       if (!GLOBAL_TYPES.has(lang)) continue;
       const facts = this.factsOf(f);
       if (!facts) continue;
@@ -313,7 +350,80 @@ export class ModuleResolver {
     return { kind: 'package', name: specifier };
   }
 
-  /** Java / C# / PHP: `a.b.Type` → its file, `a.b` (wildcard / using) → the namespace's files. */
+  /**
+   * Swift: `import Shop` → the `Sources/Shop` target's files, so cross-target
+   * names resolve; anything else is an SDK or third-party module.
+   */
+  private resolveSwift(specifier: string): Resolution {
+    const paths: string[] = [];
+    for (const [root, files] of this.index().swiftTargets) {
+      if (root.split('/').pop() === specifier) paths.push(...files);
+    }
+    if (paths.length) return { kind: 'files', paths: [...new Set(paths)].sort() };
+    return { kind: 'package', name: specifier };
+  }
+
+  /**
+   * Dart: relative URIs probe next to the importer; `package:` URIs map
+   * under the nearest enclosing `lib/` (the same package), otherwise name
+   * the external package; `dart:` libraries are the SDK.
+   */
+  private resolveDart(fromDir: string, specifier: string): Resolution {
+    if (specifier.startsWith('dart:')) return { kind: 'package', name: specifier };
+    const pkg = /^package:([^/]+)\/(.+)$/.exec(specifier);
+    if (pkg) {
+      const rest = pkg[2]!;
+      const roots: string[] = [];
+      let dir = fromDir;
+      for (;;) {
+        if (dir === 'lib' || dir.endsWith('/lib')) roots.push(dir);
+        if (!dir) break;
+        dir = dirname(dir);
+      }
+      roots.push('lib');
+      for (const r of roots) {
+        const candidate = join(r, rest);
+        if (this.files.has(candidate)) return { kind: 'file', path: candidate };
+      }
+      return { kind: 'package', name: pkg[1]! };
+    }
+    return this.resolveRelative(fromDir, specifier, ['.dart', '']);
+  }
+
+  /**
+   * Lua: `require('a.b.c')` probes `a/b/c.lua` then `a/b/c/init.lua`
+   * next to the importer; anything else is an external rock (socket, cjson).
+   */
+  private resolveLua(fromDir: string, specifier: string): Resolution {
+    const rel = specifier.replace(/^\.\//, '').replace(/\./g, '/');
+    const found = this.probeWith(join(fromDir, rel), ['.lua', '/init.lua']);
+    if (found) return { kind: 'file', path: found };
+    return { kind: 'package', name: specifier };
+  }
+
+  /**
+   * C / C++: angle includes are system headers; quoted includes probe
+   * relative to the importer, then any unique same-suffix file (an `-I`
+   * directory we cannot see). Bare names are `using` directives, not files.
+   */
+  private resolveC(fromDir: string, specifier: string): Resolution {
+    const angle = /^<(.*)>$/.exec(specifier);
+    if (angle) return { kind: 'package', name: angle[1]! };
+    const direct = join(fromDir, specifier);
+    if (this.files.has(direct)) return { kind: 'file', path: direct };
+    const bare = !specifier.includes('.') && !specifier.includes('/');
+    const suffix = `/${specifier}`;
+    let match: string | null = null;
+    for (const f of this.files) {
+      if (!f.endsWith(suffix)) continue;
+      if (match) return { kind: 'unresolved', local: !bare };
+      match = f;
+    }
+    if (match) return { kind: 'file', path: match };
+    return { kind: 'unresolved', local: !bare };
+  }
+
+  /** Java / C# / PHP / Kotlin: `a.b.Type` → its file, `a.b` (wildcard / using) → the namespace's files. */
   private resolveQualified(lang: string, specifier: string): Resolution {
     const name = specifier.replace(/^\\/, '').replace(/\\/g, '.');
     const idx = this.index();
@@ -342,9 +452,20 @@ export class ModuleResolver {
         return this.resolveRust(importer, specifier);
       case 'ruby':
         return this.resolveRuby(fromDir, specifier);
+      case 'swift':
+        return this.resolveSwift(specifier);
+      case 'c':
+      case 'cpp':
+      case 'objc':
+        return this.resolveC(fromDir, specifier);
+      case 'dart':
+        return this.resolveDart(fromDir, specifier);
+      case 'lua':
+        return this.resolveLua(fromDir, specifier);
       case 'java':
       case 'csharp':
       case 'php':
+      case 'kotlin':
         if (specifier.startsWith('.')) return this.resolveRelative(fromDir, specifier, ['']);
         return this.resolveQualified(lang, specifier);
       default:

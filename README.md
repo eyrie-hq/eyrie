@@ -214,10 +214,18 @@ Selecting a component also shows its findings and what changed in this session i
 | PHP | `.php` | namespaces, `use` (including groups), `require` / `include` |
 | Ruby | `.rb` `.rake` | `require` / `require_relative`, autoloaded constants (Rails) |
 | Rust | `.rs` | `mod` files, `use` trees, `crate::` / `self::` / `super::` paths |
+| Kotlin | `.kt` `.kts` | packages, single-type and wildcard imports |
+| Swift | `.swift` | `import` modules; every file in a target sees the others |
+| C | `.c` `.h` | quoted `#include`s (relative, then include directories); header prototypes are the link targets |
+| C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hh` `.hxx` | quoted `#include`s, out-of-class `Type::member` definitions, `using` directives |
+| Dart | `.dart` | relative and `package:` URIs (`lib/`-based, no pubspec parsing); `dart:` is the SDK |
+| Vue | `.vue` | single-file components through the JS resolver; template tags are render edges |
+| Objective-C | `.m` | quoted `#import`s (relative, then include directories); `.h` stays C++ |
+| Lua | `.lua` | `require` paths (dotted, `init.lua`); `self` and colon methods |
 
 Every language gets the same treatment: classes and functions, calls between them (including through fields such as `self.repo`, `$this->repo`, `@repo` and injected services), HTTP routes, database models with reads and writes, external SDKs and outbound HTTP calls. Mixed repositories (a Python or Go backend with a React frontend) are indexed into one map. See [What is detected](#what-is-detected) for the frameworks each language understands. JavaScript (Next.js, Node.js) has the deepest support.
 
-Generated code is skipped (`*.pb.go`, `*_pb2.py`, `*.Designer.cs`, `*.d.ts`), and test files in each language's convention (`test_*.py`, `*_test.go`, `*Test.java`, `*_spec.rb`, …) are kept out of the architecture view.
+Generated code is skipped (`*.pb.go`, `*_pb2.py`, `*.Designer.cs`, `*.d.ts`), and test files in each language's convention (`test_*.py`, `*_test.go`, `*Test.java`, `*Test.kt`, `*Tests.swift`, `test_*.c`, `*_test.dart`, `*Tests.m`, `*_spec.lua`, `*_spec.rb`, …) are kept out of the architecture view.
 
 ## What you see
 
@@ -251,7 +259,7 @@ git log ── new commits ──► knowledge.db ◄── components each comm
 **Code graph first. Visualization second. AI third.** Every relationship and every finding comes from static analysis. AI is optional, off by default, and only annotates or answers: notes on recorded commits and on what an agent's session changed, and answers to questions. Each one must cite components the tools actually returned, or it is rejected. It never invents a dependency or a finding.
 
 1. **Facts.** Each file is parsed once with tree-sitter (WASM) into *facts*: imports, exports, symbols, call/`new`/JSX references with their enclosing symbol, literal arguments (for `fetch('/api/...')`), route registrations, ORM models. Every language has its own adapter, but they all produce the same facts, so everything downstream is language-neutral. Facts depend only on the file's content, so they are cached in SQLite by hash; restarts reuse them.
-2. **Code graph.** Facts become nodes (files, functions, classes, methods, components, hooks, API routes, middleware, data models, external services) and edges (`CONTAINS`, `IMPORTS`, `EXPORTS`, `CALLS`, `USES`, `EXTENDS`, `IMPLEMENTS`, `HTTP_CALL`, `READS_FROM`, `WRITES_TO`, `DEPENDS_ON`). Resolution follows relative imports, tsconfig/jsconfig `paths` and `baseUrl`, workspace packages, barrels and re-exports, class instances, `this.field` types, typed parameters and object-literal services. Outside JavaScript it also follows Python dotted modules and packages, Go packages (directories, via `go.mod`), Java / C# / PHP namespaces and wildcard imports, Rust `mod` trees and `use` paths, and Ruby autoloaded constants, plus names visible without an import (same Go package, same Java or C# namespace). `self`, receivers, `$this`, `@ivar` and injected fields all resolve like `this.field`. Every edge carries a confidence.
+2. **Code graph.** Facts become nodes (files, functions, classes, methods, components, hooks, API routes, middleware, data models, external services) and edges (`CONTAINS`, `IMPORTS`, `EXPORTS`, `CALLS`, `USES`, `EXTENDS`, `IMPLEMENTS`, `HTTP_CALL`, `READS_FROM`, `WRITES_TO`, `DEPENDS_ON`). Resolution follows relative imports, tsconfig/jsconfig `paths` and `baseUrl`, workspace packages, barrels and re-exports, class instances, `this.field` types, typed parameters and object-literal services. Outside JavaScript it also follows Python dotted modules and packages, Go packages (directories, via `go.mod`), Java / C# / PHP / Kotlin namespaces and wildcard imports, Swift modules, C / C++ / Objective-C quoted includes (with an include-directory fallback), Dart `package:` URIs, Lua `require` paths, Vue SFCs through the JS resolver, Rust `mod` trees and `use` paths, and Ruby autoloaded constants, plus names visible without an import (same Go package, same Java or C# namespace, same Swift target). `self`, receivers, `$this`, `@ivar` and injected fields all resolve like `this.field`. Every edge carries a confidence.
 3. **Lenses.** Data flow and sequence are pure functions of the architecture graph, computed in the browser, so they stay live as you edit. Data flow keeps a component when it stores data, reads, writes or ships it, or when it sits on a path from an entry point to one that does; each edge is classified `read`, `write`, `readwrite`, `transfer` (it crosses a process boundary) or `carry`. Sequence walks the graph from one entry point, ordering each component's calls by the source line the graph recorded for them, and expanding a component's own calls only the first time it is reached. Its canvas uses custom React Flow lifeline nodes and message edges, with pan, zoom, fit/reset controls, and a pinned source column that follows the viewport vertically.
 4. **Incremental updates.** While resolving a file, the graph records which other files it consulted. When a file changes, only it is re-resolved, plus, if its exported surface changed, the files that consulted it. Node ids are stable hashes of `repository + file path + symbol kind + qualified name`, so unchanged code keeps its identity across edits. Each update produces an exact diff (`node.created`, `edge.deleted`, …).
 5. **Architecture graph.** Files are classified by framework conventions and names (Next.js `page`/`route`/`layout`/`middleware`, `'use server'`, Express routers, `*Service`, `*Repository`, `services/`, React components, hooks). Presentational components, hooks, helpers and SDK client wrappers are hidden and edges pass through them, so the map stays small and connected. Shared helpers used by many components, and modules on dependency paths in library-style repos, are shown. A typical app reduces to 20–50 components.
@@ -272,6 +280,14 @@ git log ── new commits ──► knowledge.db ◄── components each comm
 | PHP | Laravel routes (groups, prefixes, `match`, `resource`) and Symfony `#[Route]`; Eloquent models and relations |
 | Ruby | Rails `routes.rb` (`resources`, `namespace`, `to:`) and Sinatra; ActiveRecord models and associations |
 | Rust | axum `.route()`, actix-web / rocket attribute routes; diesel, sea-orm and sqlx models |
+| Kotlin | Spring MVC routes, JPA entities and Spring Data repositories, like Java |
+| Swift | Vapor routes; SwiftData `@Model` and Fluent models |
+| C | CivetWeb / Mongoose `mg_*` route registrations; structs, typedefs, function-like macros |
+| C++ | classes with out-of-class definitions, templates, `using` directives and namespace aliases |
+| Dart | classes, mixins, enums and extension members; Flutter widgets are plain classes |
+| Vue | `<script>` / `<script setup>` blocks, template component usage |
+| Objective-C | `@interface` / `@implementation`, protocols, message sends |
+| Lua | `require` modules, module tables, colon methods |
 | External services | 50+ SDKs (OpenAI, Anthropic, Gemini, Stripe, Resend, Clerk, Supabase, Redis, S3, …) via imports or API hosts, recognised under each ecosystem's package names (pip, Go modules, Maven, NuGet, Composer, gems, crates) |
 | Project setup | `tsconfig`/`jsconfig` paths (including `extends`), monorepo workspace packages, `go.mod` modules, frameworks from `pyproject.toml` / `requirements.txt`, `pom.xml` / `build.gradle`, `*.csproj`, `composer.json`, `Gemfile` and `Cargo.toml`, `.gitignore` and `.eyrieignore` |
 
@@ -371,8 +387,11 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - Architecture classification is heuristic. It is tuned most for Next.js and Node.js apps, then for the frameworks listed above; other layouts may need rules. Add a doc comment (or a Python docstring) to a component's main export to set its description.
 - Express router prefixes (`app.use('/api', router)`) are not joined to the routes registered on the router yet.
 - Parsing is single-threaded; very large repositories take a while on first run (later runs use the cache).
-- Supported languages: TypeScript, JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust. Kotlin, Swift and C/C++ are not parsed yet.
-- Outside JavaScript, what a dynamic language decides at run time is not followed: Ruby metaprogramming, PHP magic methods, Python `getattr`, DI containers configured outside the code, and Rust macro bodies (such as `sqlx::query!`).
+- C and C++: system headers (`#include <…>`) are not followed into the project, and C++20 modules (`export module` / `import x;`) are not parsed.
+- Objective-C: only `.m` files are parsed (`.h` stays with C++, `.mm` is skipped), so interfaces declared only in headers are not followed.
+- Vue: only `<script>` blocks and template component tags are read; directives, `v-for` and `<style>` are ignored.
+- Dart: `package:` imports resolve without reading `pubspec.yaml`, and explicit type arguments on method calls (`o.m<int>()`) are not followed.
+- Outside JavaScript, what a dynamic language decides at run time is not followed: Ruby metaprogramming, PHP magic methods, Python `getattr`, Lua metatables and dynamic `require()`, DI containers configured outside the code, and Rust macro bodies (such as `sqlx::query!`).
 - A frontend that calls the backend through a generated API client (OpenAPI SDKs) shows no HTTP links to the backend's routes; only direct `fetch` / `axios` calls are matched.
 - The desktop builds are not signed by Apple or Microsoft, so each system warns the first time Eyrie opens, and there are no automatic updates yet.
 - **`@eyrie-hq/cli` is not on npm yet.** The publish runs on a version tag and that tag has not been pushed, so the `npx -y @eyrie-hq/cli` lines above do not work today: use the `eyrie` command the desktop app installs, or a source checkout.

@@ -15,7 +15,7 @@ function wasmRequire(): NodeRequire {
 }
 const require = { resolve: (id: string): string => wasmRequire().resolve(id) };
 
-type GrammarLanguage = Exclude<SourceLanguage, 'prisma'>;
+type GrammarLanguage = Exclude<SourceLanguage, 'prisma' | 'vue'>;
 
 const GRAMMARS: Record<GrammarLanguage, string> = {
   typescript: 'tree-sitter-typescript/tree-sitter-typescript.wasm',
@@ -29,6 +29,13 @@ const GRAMMARS: Record<GrammarLanguage, string> = {
   csharp: 'tree-sitter-c-sharp/tree-sitter-c_sharp.wasm',
   php: 'tree-sitter-php/tree-sitter-php.wasm',
   ruby: 'tree-sitter-ruby/tree-sitter-ruby.wasm',
+  kotlin: '@tree-sitter-grammars/tree-sitter-kotlin/tree-sitter-kotlin.wasm',
+  swift: '@binclusive/tree-sitter-swift-wasm/tree-sitter-swift.wasm',
+  c: 'tree-sitter-c/tree-sitter-c.wasm',
+  cpp: 'tree-sitter-cpp/tree-sitter-cpp.wasm',
+  dart: '@plurnk/plurnk-mimetypes-grammar-dart/dart.wasm',
+  objc: 'tree-sitter-objc/tree-sitter-objc.wasm',
+  lua: '@tree-sitter-grammars/tree-sitter-lua/tree-sitter-lua.wasm',
 };
 
 const EXTENSIONS: Record<string, SourceLanguage> = {
@@ -48,6 +55,23 @@ const EXTENSIONS: Record<string, SourceLanguage> = {
   '.php': 'php',
   '.rb': 'ruby',
   '.rake': 'ruby',
+  '.kt': 'kotlin',
+  '.kts': 'kotlin',
+  '.swift': 'swift',
+  // `.h` parses with the C++ grammar: a superset that also accepts C headers.
+  '.c': 'c',
+  '.h': 'cpp',
+  '.cpp': 'cpp',
+  '.cc': 'cpp',
+  '.cxx': 'cpp',
+  '.hpp': 'cpp',
+  '.hh': 'cpp',
+  '.hxx': 'cpp',
+  '.dart': 'dart',
+  // `.m` is also MATLAB; Eyrie reads it as Objective-C.
+  '.m': 'objc',
+  '.lua': 'lua',
+  '.vue': 'vue',
   '.prisma': 'prisma',
 };
 
@@ -56,7 +80,7 @@ export type { GrammarLanguage };
 export const SOURCE_EXTENSIONS = Object.keys(EXTENSIONS);
 
 /** Generated code that would only add noise to the graph. */
-const GENERATED = /(\.d\.[mc]?ts|\.pb\.go|_pb2(_grpc)?\.py|\.g\.cs|\.designer\.cs|\.generated\.cs|AssemblyInfo\.cs)$/i;
+const GENERATED = /(\.d\.[mc]?ts|\.pb\.go|_pb2(_grpc)?\.py|\.g\.cs|\.designer\.cs|\.generated\.cs|AssemblyInfo\.cs|\.pb\.(cc|cpp|cxx)|\.generated\.swift|(^|\/)(moc_|ui_|qrc_)[^/]*\.(cpp|h|hpp)|\.g\.dart|\.freezed\.dart)$/i;
 
 export function detectLanguage(path: string): SourceLanguage | null {
   if (GENERATED.test(path)) return null;

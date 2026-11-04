@@ -271,12 +271,30 @@ importers:
 
   packages/parser:
     dependencies:
+      '@binclusive/tree-sitter-swift-wasm':
+        specifier: 0.1.0
+        version: 0.1.0
       '@eyrie/core':
         specifier: workspace:*
         version: link:../core
+      '@plurnk/plurnk-mimetypes-grammar-dart':
+        specifier: 2.0.0
+        version: 2.0.0(web-tree-sitter@0.27.0)
+      '@tree-sitter-grammars/tree-sitter-kotlin':
+        specifier: 1.1.0
+        version: 1.1.0
+      '@tree-sitter-grammars/tree-sitter-lua':
+        specifier: 0.4.1
+        version: 0.4.1
+      tree-sitter-c:
+        specifier: 0.24.1
+        version: 0.24.1
       tree-sitter-c-sharp:
         specifier: 0.23.5
         version: 0.23.5
+      tree-sitter-cpp:
+        specifier: 0.23.4
+        version: 0.23.4
       tree-sitter-go:
         specifier: 0.25.0
         version: 0.25.0
@@ -286,6 +304,9 @@ importers:
       tree-sitter-javascript:
         specifier: 0.25.0
         version: 0.25.0
+      tree-sitter-objc:
+        specifier: 3.0.2
+        version: 3.0.2
       tree-sitter-php:
         specifier: 0.24.2
         version: 0.24.2
@@ -341,6 +362,10 @@ packages:
   '@alcalzone/ansi-tokenize@0.3.1':
     resolution: {integrity: sha512-cUD0PT0YX+rImRhfn7BfMRduP/tX/Zqt/N0dHlAyn2RlcJssCb5KsCJkhln61eh9vuJDkH8wKn3L8zJzzWXPFg==}
     engines: {node: '>=18'}
+
+  '@binclusive/tree-sitter-swift-wasm@0.1.0':
+    resolution: {integrity: sha512-QZr3UahyLhPUZtBmcleKzx/TTWT4dcXv9Xb8OeGrubtqsu1aNbaBYrlzeiM4XZzmm/Q+YDQEnk7/rg15SGZU1A==}
+    engines: {node: '>=20'}
 
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
@@ -661,6 +686,12 @@ packages:
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
 
+  '@plurnk/plurnk-mimetypes-grammar-dart@2.0.0':
+    resolution: {integrity: sha512-c6BMJ4ybjyTof9fSkPtvvqwp5g6XPL8Uyz+4B0BacJYnuWouIPqAk6KCaldnLZnzBkn6jNEcu/mxUUNP/65iVw==}
+    engines: {node: '>=26'}
+    peerDependencies:
+      web-tree-sitter: ^0.25.0 || ^0.26.0 || ^0.27.0
+
   '@rolldown/binding-android-arm-eabi@1.2.13':
     resolution: {integrity: sha512-Vu/NICrgdRvUOeaJZIyB2FP63s6fO/4ud5l8dXmxDx9yDyn+mN0y+gsvsVviSli+T361Aqo0h46EuMoobrwawA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -843,6 +874,22 @@ packages:
     resolution: {integrity: sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@tree-sitter-grammars/tree-sitter-kotlin@1.1.0':
+    resolution: {integrity: sha512-vlVXaxEE8t2kpJgfZpa8XVvxcnKw9AYtRTgy7KWjsDmAsadk06RxAT80IXOgGQnmM9i/orQn1nD84gPNUHu6DQ==}
+    peerDependencies:
+      tree-sitter: ^0.22.4
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  '@tree-sitter-grammars/tree-sitter-lua@0.4.1':
+    resolution: {integrity: sha512-EwagFaU6ZveVk18/Y8qUhZkkiBKnQ7dSCHbm//TUroLVKy3i1rOYGy/cNHtSkAb1eDvS1HhCLybH2S541Cya/g==}
+    peerDependencies:
+      tree-sitter: ^0.22.4
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
 
   '@tweenjs/tween.js@23.1.3':
     resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
@@ -1729,6 +1776,11 @@ packages:
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
 
+  npm-check-updates@17.1.18:
+    resolution: {integrity: sha512-bkUy2g4v1i+3FeUf5fXMLbxmV95eG4/sS7lYE32GrUeVgQRfQEk39gpskksFunyaxQgTIdrvYbnuNbO/pSUSqw==}
+    engines: {node: ^18.18.0 || >=20.0.0, npm: '>=8.12.1'}
+    hasBin: true
+
   npm-run-path@2.0.2:
     resolution: {integrity: sha512-lJxZYlT4DW/bRUtFh1MQIWqmLwQfAxnqWG4HhEdjMlkrJYnJn0Jrr2u3mgxqaWsdiBc76TYkTG/mhrnYTuzfHw==}
     engines: {node: '>=4'}
@@ -2015,6 +2067,30 @@ packages:
       tree-sitter:
         optional: true
 
+  tree-sitter-c@0.23.6:
+    resolution: {integrity: sha512-0dxXKznVyUA0s6PjNolJNs2yF87O5aL538A/eR6njA5oqX3C3vH4vnx3QdOKwuUdpKEcFdHuiDpRKLLCA/tjvQ==}
+    peerDependencies:
+      tree-sitter: ^0.22.1
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-c@0.24.1:
+    resolution: {integrity: sha512-lkYwWN3SRecpvaeqmFKkuPNR3ZbtnvHU+4XAEEkJdrp3JfSp2pBrhXOtvfsENUneye76g889Y0ddF2DM0gEDpA==}
+    peerDependencies:
+      tree-sitter: ^0.22.4
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-cpp@0.23.4:
+    resolution: {integrity: sha512-qR5qUDyhZ5jJ6V8/umiBxokRbe89bCGmcq/dk94wI4kN86qfdV8k0GHIUEKaqWgcu42wKal5E97LKpLeVW8sKw==}
+    peerDependencies:
+      tree-sitter: ^0.21.1
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
   tree-sitter-go@0.25.0:
     resolution: {integrity: sha512-APBc/Dq3xz/e35Xpkhb1blu5UgW+2E3RyGWawZSCNcbGwa7jhSQPS8KsUupuzBla8PCo8+lz9W/JDJjmfRa2tw==}
     peerDependencies:
@@ -2043,6 +2119,14 @@ packages:
     resolution: {integrity: sha512-1fCbmzAskZkxcZzN41sFZ2br2iqTYP3tKls1b/HKGNPQUVOpsUxpmGxdN/wMqAk3jYZnYBR1dd/y/0avMeU7dw==}
     peerDependencies:
       tree-sitter: ^0.25.0
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-objc@3.0.2:
+    resolution: {integrity: sha512-Hs0ohmx1u5M+0K7efoW+dv/corhBsfjftfIYLtp7dSGeJ+Zj4c33tDIboBYLs6qijRlz6wtHFxa0YX+FibLulA==}
+    peerDependencies:
+      tree-sitter: ^0.22.1
     peerDependenciesMeta:
       tree-sitter:
         optional: true
@@ -2322,6 +2406,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  '@binclusive/tree-sitter-swift-wasm@0.1.0': {}
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
@@ -2706,6 +2792,10 @@ snapshots:
 
   '@oxc-project/types@0.153.0': {}
 
+  '@plurnk/plurnk-mimetypes-grammar-dart@2.0.0(web-tree-sitter@0.27.0)':
+    dependencies:
+      web-tree-sitter: 0.27.0
+
   '@rolldown/binding-android-arm-eabi@1.2.13':
     optional: true
 
@@ -2820,6 +2910,17 @@ snapshots:
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
       vite: 8.3.3(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+
+  '@tree-sitter-grammars/tree-sitter-kotlin@1.1.0':
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+      npm-check-updates: 17.1.18
+
+  '@tree-sitter-grammars/tree-sitter-lua@0.4.1':
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
 
   '@tweenjs/tween.js@23.1.3': {}
 
@@ -3723,6 +3824,8 @@ snapshots:
     dependencies:
       abbrev: 4.0.0
 
+  npm-check-updates@17.1.18: {}
+
   npm-run-path@2.0.2:
     dependencies:
       path-key: 2.0.1
@@ -4000,6 +4103,22 @@ snapshots:
       node-addon-api: 8.9.2
       node-gyp-build: 4.8.4
 
+  tree-sitter-c@0.23.6:
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+
+  tree-sitter-c@0.24.1:
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+
+  tree-sitter-cpp@0.23.4:
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+      tree-sitter-c: 0.23.6
+
   tree-sitter-go@0.25.0:
     dependencies:
       node-addon-api: 8.9.2
@@ -4019,6 +4138,12 @@ snapshots:
     dependencies:
       node-addon-api: 8.9.2
       node-gyp-build: 4.8.4
+
+  tree-sitter-objc@3.0.2:
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+      tree-sitter-c: 0.23.6
 
   tree-sitter-php@0.24.2:
     dependencies:

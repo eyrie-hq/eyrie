@@ -41,6 +41,13 @@ Type-only packages (`@types/*`, `graphology-types`, `csstype`) and install-time 
 | `tree-sitter-php` | 0.24.2 | MIT | Copyright (c) 2017 Josh Vera, GitHub | https://github.com/tree-sitter/tree-sitter-php |
 | `tree-sitter-ruby` | 0.23.1 | MIT | Copyright (c) 2016 Rob Rix | https://github.com/tree-sitter/tree-sitter-ruby |
 | `tree-sitter-rust` | 0.24.0 | MIT | Copyright (c) 2017 Maxim Sokolov | https://github.com/tree-sitter/tree-sitter-rust |
+| `@tree-sitter-grammars/tree-sitter-kotlin` | 1.1.0 | MIT | Copyright (c) 2024 Amaan Qureshi | https://github.com/tree-sitter-grammars/tree-sitter-kotlin |
+| `@binclusive/tree-sitter-swift-wasm` | 0.1.0 | MIT | Copyright (c) 2021 alex-pinkus | https://github.com/Binclusive/monorepo |
+| `tree-sitter-c` | 0.24.1 | MIT | Copyright (c) 2014 Max Brunsfeld | https://github.com/tree-sitter/tree-sitter-c |
+| `tree-sitter-cpp` | 0.23.4 | MIT | Copyright (c) 2014 Max Brunsfeld | https://github.com/tree-sitter/tree-sitter-cpp |
+| `@plurnk/plurnk-mimetypes-grammar-dart` | 2.0.0 | MIT | Copyright (c) 2026 PossumTech Laboratories, LLC | https://github.com/plurnk/plurnk-mimetypes-grammar-dart |
+| `tree-sitter-objc` | 3.0.2 | MIT | Copyright (c) 2023 Amaan Qureshi | https://github.com/tree-sitter-grammars/tree-sitter-objc |
+| `@tree-sitter-grammars/tree-sitter-lua` | 0.4.1 | MIT | Copyright (c) 2021 Munif Tanjim | https://github.com/tree-sitter-grammars/tree-sitter-lua |
 | `graphology` | 0.26.0 | MIT | Copyright (c) 2016-2021 Guillaume Plique (Yomguithereal) | https://github.com/graphology/graphology |
 | `events` | 3.3.0 | MIT | Copyright Joyent, Inc. and other Node contributors | https://github.com/browserify/events |
 | `chokidar` | 5.0.0 | MIT | Copyright (c) 2012 Paul Miller (https://paulmillr.com), Elan Shanker | https://github.com/paulmillr/chokidar |

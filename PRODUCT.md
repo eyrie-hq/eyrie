@@ -60,7 +60,7 @@ The third position, increasingly the point: **codebases are now modified by agen
 
 **Hard constraints:**
 
-- Languages: TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust. JavaScript (Next.js, Node.js) has the deepest support; Kotlin, Swift and C/C++ are not parsed.
+- Languages: TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby, Rust, Kotlin, Swift, C, C++, Dart, Vue, Objective-C and Lua. JavaScript (Next.js, Node.js) has the deepest support.
 - No control-flow analysis — so no branch, retry or terminal-state workflow views.
 - No editing code from the map. Eyrie reads; your editor or agent writes. The one planned exception is agent setup, and only when the user asks: Eyrie may add itself to a coding agent's MCP configuration and write a marked, git-excluded section in `CLAUDE.local.md` or `AGENTS.md`. It never writes source code.
 - No cloud component, no account system, no telemetry.

@@ -64,6 +64,8 @@ export abstract class BaseExtractor {
   readonly facts: FileFacts;
   protected scopes: Scope[] = [{ name: '' }];
   protected symbolsByName = new Map<string, SymbolFact>();
+  /** Re-parse a snippet in isolation, for grammar-quirk recovery. Set by the adapter. */
+  reparseSnippet: (<T>(text: string, fn: (root: Node) => T) => T) | null = null;
 
   constructor(path: string, language: SourceLanguage, hash: string, source: string) {
     this.facts = {
