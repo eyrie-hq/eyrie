@@ -773,10 +773,12 @@ export class GraphIndex {
         else wanted.add(s.imported);
       }
     }
+    // A Swift module import exposes every Uppercase name, like a wildcard.
+    const wholeModule = wildcard || languageOfPath(ctx.path) === 'swift';
     const use = (chain: string[]) => {
       const [first, second] = chain;
       if (bound.has(first!) && second) wanted.add(second);
-      else if (wildcard && /^[A-Z]/.test(first!)) wanted.add(first!);
+      else if (wholeModule && /^[A-Z]/.test(first!)) wanted.add(first!);
     };
     for (const ref of ctx.facts.references) use(ref.callee.map(strip));
     for (const s of ctx.facts.symbols) {
@@ -789,7 +791,7 @@ export class GraphIndex {
     });
     // A wildcard import nothing is used from is noise (`using Acme.Shared;` out of habit),
     // but a named package import is a real dependency even when we cannot see what it uses.
-    if (hits.length || wildcard) return hits;
+    if (hits.length || wildcard || wholeModule) return hits;
     return paths.length <= 3 ? paths : paths.slice(0, 1);
   }
 
@@ -937,8 +939,9 @@ export class GraphIndex {
 
   /**
    * Names visible without a binding import: wildcard imports, other files
-   * of the same Go package / Java or C# namespace, and repo-wide type
-   * names (Rails autoloading, PHP / C# / Java fallback).
+   * of the same Go package / Java or C# namespace / Swift target, names
+   * from a whole-module Swift import, and repo-wide type names (Rails
+   * autoloading, PHP / C# / Java fallback).
    */
   private resolveImplicit(ctx: Ctx, file: string, facts: FileFacts, name: string): Target | null {
     for (const imp of facts.imports) {
@@ -954,6 +957,15 @@ export class GraphIndex {
       if (s && !s.parent) {
         ctx.consulted.add(mate);
         return { kind: 'symbol', file: mate, symbol: s };
+      }
+    }
+    // Swift imports name whole modules: `import Shop` exposes its target's types.
+    if (languageOfPath(file) === 'swift') {
+      for (const imp of facts.imports) {
+        const res = this.resolver.resolve(file, imp.source);
+        if (res.kind !== 'files') continue;
+        const t = this.packageExport(ctx, res.paths, name);
+        if (t) return t;
       }
     }
     if (/^[A-Z]/.test(name)) {
@@ -1082,8 +1094,9 @@ export class GraphIndex {
     const m = idx.get(`${owner}.${member}`);
     if (m) return { file, symbol: m };
     if (depth >= 5) return null;
-    // Go methods attach to a type from any file of its package.
-    const mates = languageOfPath(file) === 'go' ? this.resolver.matesOf(file) : [];
+    // Go methods and Swift extension members attach to a type from any file of their package / module.
+    const lang = languageOfPath(file);
+    const mates = lang === 'go' || lang === 'swift' ? this.resolver.matesOf(file) : [];
     for (const mate of mates) {
       const mm = symbolIndex(this.facts.get(mate)!).get(`${owner}.${member}`);
       if (mm) {

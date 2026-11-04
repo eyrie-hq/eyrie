@@ -1,17 +1,25 @@
 import { createHash } from 'node:crypto';
 import type { FileFacts, SourceLanguage } from '@eyrie/core';
 import type { BaseExtractor } from './base.js';
+import { CExtractor } from './c.js';
+import { CppExtractor } from './cpp.js';
 import { CSharpExtractor } from './csharp.js';
+import { DartExtractor } from './dart.js';
 import { GoExtractor } from './go.js';
 import { JavaExtractor } from './java.js';
+import { KotlinExtractor } from './kotlin.js';
+import { LuaExtractor } from './lua.js';
 import { ParserPool, SOURCE_EXTENSIONS, detectLanguage, type GrammarLanguage } from './languages.js';
+import { ObjcExtractor } from './objc.js';
 import { PhpExtractor } from './php.js';
 import { extractPrisma } from './prisma.js';
 import { PythonExtractor } from './python.js';
 import { RubyExtractor } from './ruby.js';
+import { SwiftExtractor } from './swift.js';
 import { RustExtractor } from './rust.js';
 import { extractSecurity } from './security.js';
 import { TypeScriptExtractor } from './typescript.js';
+import { extractVue } from './vue.js';
 
 export { SOURCE_EXTENSIONS, detectLanguage, grammarFiles } from './languages.js';
 export { goPackageName } from './go.js';
@@ -35,9 +43,11 @@ export function contentHash(source: string): string {
   return createHash('sha1').update(source).digest('hex').slice(0, 16);
 }
 
-type ExtractorClass = new (path: string, language: SourceLanguage, hash: string, source: string) => Pick<BaseExtractor, 'run'>;
+type ExtractorClass = new (path: string, language: SourceLanguage, hash: string, source: string) => Pick<BaseExtractor, 'run'> & Partial<Pick<BaseExtractor, 'reparseSnippet'>>;
 
 const EXTRACTORS: Record<GrammarLanguage, ExtractorClass> = {
+  c: CExtractor,
+  cpp: CppExtractor,
   typescript: TypeScriptExtractor,
   tsx: TypeScriptExtractor,
   javascript: TypeScriptExtractor,
@@ -49,6 +59,11 @@ const EXTRACTORS: Record<GrammarLanguage, ExtractorClass> = {
   csharp: CSharpExtractor,
   php: PhpExtractor,
   ruby: RubyExtractor,
+  kotlin: KotlinExtractor,
+  swift: SwiftExtractor,
+  dart: DartExtractor,
+  objc: ObjcExtractor,
+  lua: LuaExtractor,
 };
 
 /** Every tree-sitter language: parse once, hand the tree to that language's extractor. */
@@ -62,7 +77,17 @@ export class TreeSitterAdapter implements LanguageAdapter {
     const tree = parser.parse(source);
     if (!tree) return null;
     try {
-      const facts = new EXTRACTORS[language](path, language, contentHash(source), source).run(tree.rootNode);
+      const extractor = new EXTRACTORS[language](path, language, contentHash(source), source);
+      extractor.reparseSnippet = (text, fn) => {
+        const snippet = parser.parse(text);
+        if (!snippet) throw new Error('snippet parse failed');
+        try {
+          return fn(snippet.rootNode);
+        } finally {
+          snippet.delete();
+        }
+      };
+      const facts = extractor.run(tree.rootNode);
       facts.security = extractSecurity(path, language, facts, source);
       return facts;
     } finally {
@@ -94,6 +119,7 @@ export class SourceParser {
     const language = detectLanguage(path);
     if (!language || shouldSkipSource(source)) return null;
     if (language === 'prisma') return extractPrisma(path, source, contentHash(source));
+    if (language === 'vue') return extractVue(path, source, contentHash(source));
     return this.adapter.extract(path, source, language);
   }
 

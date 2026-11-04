@@ -32,12 +32,19 @@ const TEST_FILE = new RegExp(
     String.raw`\.(test|spec|stories|story|e2e|cy|bench)\.[mc]?[jt]sx?$`,
     String.raw`(^|/)(test_[^/]*|[^/]*_test|conftest)\.py$`,
     String.raw`_test\.go$`,
-    String.raw`(Tests?|IT|Spec)\.(java|cs|php)$`,
+    String.raw`(Tests?|IT|Spec)\.(java|cs|php|kt|kts)$`,
+    String.raw`Tests?\.swift$`,
     String.raw`_(spec|test)\.rb$`,
+    String.raw`(^|/)(test_[^/]*|[^/]*_test)\.(c|h|cpp|hpp|cc|cxx|hh|hxx)$`,
+    String.raw`(Test|Tests)\.(c|cpp|cc|cxx)$`,
+    String.raw`_test\.dart$`,
+    String.raw`\.(spec|test)\.vue$`,
+    String.raw`Tests?\.m$`,
+    String.raw`(^|/)(test_[^/]*|[^/]*_spec)\.lua$`,
   ].join('|'),
 );
 /** Any source extension: `.ts`, `.py`, `.go`, `.java`, ... */
-const SOURCE_EXT = String.raw`\.(?:[mc]?[jt]sx?|py|go|java|rs|cs|php|rb)$`;
+const SOURCE_EXT = String.raw`\.(?:[mc]?[jt]sx?|py|go|java|rs|cs|php|rb|kt|kts|swift|c|h|cpp|hpp|cc|cxx|hh|hxx|dart|vue|m|lua)$`;
 const REPO_FILE = new RegExp(String.raw`[._-](repository|repo|dao)` + SOURCE_EXT, 'i');
 // Celery `tasks.py` and Django `views.py` are conventions; elsewhere those names mean nothing.
 const JOB_FILE = new RegExp(String.raw`[._-](job|worker)` + SOURCE_EXT + String.raw`|^tasks\.py$`, 'i');

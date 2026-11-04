@@ -114,6 +114,100 @@ describe('Java', () => {
   });
 });
 
+describe('Kotlin', () => {
+  const base = 'src/shop';
+  const files = {
+    [`${base}/order/Order.kt`]: `package shop.order\n\nimport jakarta.persistence.*\n\n@Entity\ndata class Order(\n    @Id val id: Long,\n    @ManyToOne val customer: Customer,\n)\n`,
+    [`${base}/order/Customer.kt`]: `package shop.order\n\nimport jakarta.persistence.*\n\n@Entity\nclass Customer {\n    @Id val id: Long = 0\n}\n`,
+    [`${base}/order/OrderRepository.kt`]: `package shop.order\n\ninterface OrderRepository {\n    fun findByRef(ref: String): Order\n}\n`,
+    [`${base}/order/OrderService.kt`]: `package shop.order\n\nimport shop.payment.PaymentGateway\n\n/** Checks out orders. */\nclass OrderService(private val repo: OrderRepository, private val payments: PaymentGateway) {\n    fun checkout(ref: String): Order {\n        val o = repo.findByRef(ref)\n        payments.charge(o)\n        return o\n    }\n}\n`,
+    [`${base}/payment/PaymentGateway.kt`]: `package shop.payment\n\nimport com.stripe.model.Charge\n\nclass PaymentGateway {\n    fun charge(o: Any) {\n        Charge.create(null)\n    }\n}\n`,
+    [`${base}/web/OrderController.kt`]: `package shop.web\n\nimport shop.order.OrderService\n\n@RestController\n@RequestMapping("/api/orders")\nclass OrderController(private val service: OrderService) {\n    @PostMapping("/{ref}/checkout")\n    fun checkout(ref: String) = service.checkout(ref)\n}\n`,
+  };
+
+  it('resolves packages, constructor injection, Spring routes and JPA entities', async () => {
+    const e = edges(await build(files));
+    const c = (s: string) => `${base}/${s}`;
+    expect(e).toContain(`CALLS api_route:POST /api/orders/:ref/checkout -> ${c('web/OrderController.kt')}#OrderController.checkout`);
+    expect(e).toContain(`CALLS ${c('web/OrderController.kt')}#OrderController.checkout -> ${c('order/OrderService.kt')}#OrderService.checkout`);
+    expect(e).toContain(`CALLS ${c('order/OrderService.kt')}#OrderService.checkout -> ${c('order/OrderRepository.kt')}#OrderRepository.findByRef`);
+    expect(e).toContain(`CALLS ${c('order/OrderService.kt')}#OrderService.checkout -> ${c('payment/PaymentGateway.kt')}#PaymentGateway.charge`);
+    expect(e).toContain(`USES ${c('payment/PaymentGateway.kt')}#PaymentGateway.charge -> external_service:Stripe`);
+    expect(e).toContain('DEPENDS_ON database_model:Order -> database_model:Customer');
+    expect(e).toContain(`IMPORTS ${c('web/OrderController.kt')} -> ${c('order/OrderService.kt')}`);
+    expect(e).toContain(`IMPORTS ${c('order/OrderService.kt')} -> ${c('payment/PaymentGateway.kt')}`);
+  });
+});
+
+describe('Swift', () => {
+  const shop = 'Sources/Shop';
+  const files = {
+    [`${shop}/Order.swift`]: `import Foundation\nimport SwiftData\n\n@Model\nfinal class Order {\n    var id: UUID\n    var total: Double\n\n    init(id: UUID, total: Double) {\n        self.id = id\n        self.total = total\n    }\n}\n`,
+    [`${shop}/OrderRepository.swift`]: `import Foundation\n\nfinal class OrderRepository {\n    func find(_ id: String) -> Order? {\n        nil\n    }\n}\n`,
+    [`${shop}/OrderService.swift`]: `import Foundation\n\nfinal class OrderService {\n    private let repo: OrderRepository\n    private let stripe: StripeClient\n\n    init(repo: OrderRepository, stripe: StripeClient) {\n        self.repo = repo\n        self.stripe = stripe\n    }\n\n    func checkout(_ id: String) {\n        let order = repo.find(id)\n        stripe.charge(order)\n    }\n}\n`,
+    [`${shop}/StripeClient.swift`]: `import Foundation\nimport Stripe\n\nfinal class StripeClient {\n    func charge(_ order: Any?) {\n    }\n}\n`,
+    [`${shop}/OrderController.swift`]: `import Vapor\n\nstruct OrderController: RouteCollection {\n    let service: OrderService\n\n    func boot(routes: RoutesBuilder) throws {\n        routes.post("orders", ":id", "checkout", use: self.checkout)\n    }\n\n    func checkout(req: Request) throws {\n        try service.checkout(req.id)\n        service.receipt()\n    }\n}\n`,
+    [`${shop}/OrderFormatting.swift`]: `import Foundation\n\nextension OrderService {\n    func receipt() -> String {\n        "receipt"\n    }\n}\n`,
+    'Sources/App/main.swift': `import Shop\n\nfunc run() {\n    let service = OrderService(repo: OrderRepository(), stripe: StripeClient())\n    service.checkout("abc")\n}\n`,
+  };
+
+  it('resolves modules, injection, Vapor routes, extensions and targets', async () => {
+    const e = edges(await build(files));
+    expect(e).toContain(`CALLS api_route:POST /orders/:id/checkout -> ${shop}/OrderController.swift#OrderController.checkout`);
+    expect(e).toContain(`CALLS ${shop}/OrderController.swift#OrderController.checkout -> ${shop}/OrderService.swift#OrderService.checkout`);
+    expect(e).toContain(`CALLS ${shop}/OrderController.swift#OrderController.checkout -> ${shop}/OrderFormatting.swift#OrderService.receipt`);
+    expect(e).toContain(`CALLS ${shop}/OrderService.swift#OrderService.checkout -> ${shop}/OrderRepository.swift#OrderRepository.find`);
+    expect(e).toContain(`CALLS ${shop}/OrderService.swift#OrderService.checkout -> ${shop}/StripeClient.swift#StripeClient.charge`);
+    expect(e).toContain(`USES ${shop}/StripeClient.swift -> external_service:Stripe`);
+    expect(e).toContain('CALLS Sources/App/main.swift#run -> Sources/Shop/OrderService.swift#OrderService.checkout');
+    expect(e).toContain('CALLS Sources/App/main.swift#run -> Sources/Shop/OrderService.swift#OrderService');
+    expect(e).toContain(`IMPORTS Sources/App/main.swift -> ${shop}/OrderService.swift`);
+  });
+});
+
+describe('C', () => {
+  const files = {
+    'src/order.h': `#ifndef ORDER_H\n#define ORDER_H\n\ntypedef struct {\n    int id;\n    double total;\n} Order;\n\ntypedef int OrderId;\n\nOrder *order_create(OrderId id);\ndouble order_total(const Order *o);\nvoid order_free(Order *o);\n\n#endif\n`,
+    'src/order.c': `#include "order.h"\n#include <stdlib.h>\n\nOrder *order_create(OrderId id) {\n    Order *o = malloc(sizeof(Order));\n    o->id = id;\n    return o;\n}\n\ndouble order_total(const Order *o) {\n    return o->total;\n}\n\nvoid order_free(Order *o) {\n    free(o);\n}\n`,
+    'include/util.h': `#ifndef UTIL_H\n#define UTIL_H\n\nint util_version(void);\n\n#endif\n`,
+    'src/main.c': `#include <stdio.h>\n#include "order.h"\n#include "util.h"\n\nstatic int handle_checkout(void *conn, void *data) {\n    (void)conn;\n    (void)data;\n    Order *o = order_create(7);\n    printf("%f\\n", order_total(o));\n    order_free(o);\n    return 200;\n}\n\nint main(void) {\n    if (util_version() < 2) return 1;\n    void *ctx = 0;\n    mg_set_request_handler(ctx, "/orders/**", handle_checkout, 0);\n    return 0;\n}\n`,
+  };
+
+  it('resolves quoted includes, header prototypes, -I suffixes and CivetWeb routes', async () => {
+    const e = edges(await build(files));
+    expect(e).toContain('CALLS src/main.c#handle_checkout -> src/order.h#order_create');
+    expect(e).toContain('CALLS src/main.c#handle_checkout -> src/order.h#order_total');
+    expect(e).toContain('CALLS src/main.c#handle_checkout -> src/order.h#order_free');
+    expect(e).toContain('CALLS src/main.c#main -> include/util.h#util_version');
+    expect(e).toContain('CALLS api_route:ANY /orders/** -> src/main.c#handle_checkout');
+    expect(e).toContain('IMPORTS src/main.c -> src/order.h');
+    expect(e).toContain('IMPORTS src/main.c -> include/util.h');
+    expect(e).toContain('IMPORTS src/order.c -> src/order.h');
+    // Angle includes are system headers: no edges.
+    expect(e.filter((x) => x.startsWith('IMPORTS src/main.c'))).toEqual(['IMPORTS src/main.c -> include/util.h', 'IMPORTS src/main.c -> src/order.h']);
+  });
+});
+
+describe('C++', () => {
+  const files = {
+    'include/shop/order.hpp': `#pragma once\n\n#include <string>\n\nnamespace shop {\n\nclass Order {\npublic:\n    Order(int id);\n    int total() const;\nprivate:\n    int id_;\n};\n\nOrder *find_order(const std::string &ref);\n\n}\n`,
+    'src/order.cpp': `#include "shop/order.hpp"\n\nnamespace shop {\n\nOrder::Order(int id) : id_(id) {\n}\n\nint Order::total() const {\n    return id_;\n}\n\nOrder *find_order(const std::string &ref) {\n    (void)ref;\n    return new Order(1);\n}\n\n}\n`,
+    'src/main.cpp': `#include <cstdio>\n#include "shop/order.hpp"\n\nusing namespace shop;\n\nint main() {\n    Order o(1);\n    int t = o.total();\n    Order *found = find_order("x");\n    (void)found;\n    std::printf("%d\\n", t);\n    return 0;\n}\n`,
+  };
+
+  it('resolves includes, out-of-class members, construction and using directives', async () => {
+    const e = edges(await build(files));
+    expect(e).toContain('CALLS src/main.cpp#main -> include/shop/order.hpp#Order');
+    expect(e).toContain('CALLS src/main.cpp#main -> include/shop/order.hpp#Order.total');
+    expect(e).toContain('CALLS src/main.cpp#main -> include/shop/order.hpp#find_order');
+    expect(e).toContain('CALLS src/order.cpp#find_order -> include/shop/order.hpp#Order');
+    expect(e).toContain('IMPORTS src/main.cpp -> include/shop/order.hpp');
+    expect(e).toContain('IMPORTS src/order.cpp -> include/shop/order.hpp');
+    // `using namespace` and angle includes are not file edges.
+    expect(e.filter((x) => x.startsWith('IMPORTS src/main.cpp'))).toEqual(['IMPORTS src/main.cpp -> include/shop/order.hpp']);
+  });
+});
+
 describe('C#', () => {
   const files = {
     'Models/Order.cs': `namespace Shop.Models;\n\npublic class Order { public int Id { get; set; } }\n`,
@@ -268,5 +362,92 @@ describe('incremental updates across languages', () => {
     const parser = new SourceParser();
     index.update([{ path: 'svc/b.go', facts: await parser.parse('svc/b.go', `package svc\n\nfunc helper() {}\n`) }]);
     expect(edges(index)).toContain('CALLS svc/a.go#Run -> svc/b.go#helper');
+  });
+});
+
+describe('Dart', () => {
+  it('resolves package: and relative imports, constructor calls and prefixed members', async () => {
+    const e = edges(
+      await build({
+        'lib/item.dart': `class Item {\n  final String id;\n  Item(this.id);\n}\n`,
+        'lib/order.dart': `import 'package:shop/item.dart' show Item;\nimport 'src/format.dart' as fmt;\n\nclass Order {\n  final Item item;\n  Order(this.item);\n  String label() => fmt.describe(item);\n}\n`,
+        'lib/src/format.dart': `import '../item.dart';\n\nString describe(Object o) => o.toString();\n`,
+        'lib/main.dart': `import 'dart:async';\nimport 'package:other/remote.dart';\nimport 'package:shop/order.dart';\n\nFuture<void> main() async {\n  final o = Order(Item('1'));\n  print(o.label());\n}\n`,
+      }),
+    );
+    expect(e).toContain('CALLS lib/main.dart#main -> lib/order.dart#Order');
+    expect(e).toContain('CALLS lib/main.dart#main -> lib/item.dart#Item');
+    expect(e).toContain('CALLS lib/main.dart#main -> lib/order.dart#Order.label');
+    expect(e).toContain('CALLS lib/order.dart#Order.label -> lib/src/format.dart#describe');
+    expect(e).toContain('USES lib/order.dart#Order.label -> lib/item.dart#Item');
+    expect(e).toContain('IMPORTS lib/main.dart -> lib/order.dart');
+    expect(e).toContain('IMPORTS lib/order.dart -> lib/item.dart');
+    expect(e).toContain('IMPORTS lib/order.dart -> lib/src/format.dart');
+    expect(e).toContain('IMPORTS lib/src/format.dart -> lib/item.dart');
+    // SDK and cross-package imports are external: they leave no edges.
+    expect(e.filter((x) => x.includes('remote') || x.includes('async') || x.includes('external_service'))).toEqual([]);
+  });
+});
+
+describe('Lua', () => {
+  it('resolves dotted requires, module members, colon self calls and init.lua', async () => {
+    const e = edges(
+      await build({
+        'main.lua': `local orders = require("shop.orders")\nlocal util = require("shop.util")\nlocal socket = require("socket")\n\nlocal function run(id)\n  return orders.checkout(id) .. util.suffix()\nend\n\nrun("42")\n`,
+        'shop/orders.lua': `local M = {}\n\nfunction M.checkout(id)\n  return "order-" .. id\nend\n\nfunction M:summary()\n  return self:checkout("x")\nend\n\nreturn M\n`,
+        'shop/util/init.lua': `local M = {}\n\nfunction M.suffix()\n  return "!"\nend\n\nreturn M\n`,
+      }),
+    );
+    expect(e).toContain('CALLS main.lua#run -> shop/orders.lua#M.checkout');
+    expect(e).toContain('CALLS main.lua#run -> shop/util/init.lua#M.suffix');
+    expect(e).toContain('CALLS shop/orders.lua#M.summary -> shop/orders.lua#M.checkout');
+    expect(e).toContain('CALLS main.lua -> main.lua#run');
+    expect(e).toContain('IMPORTS main.lua -> shop/orders.lua');
+    expect(e).toContain('IMPORTS main.lua -> shop/util/init.lua');
+    // Bare rocks (socket) are external: they leave no edges.
+    expect(e.filter((x) => x.startsWith('IMPORTS main.lua'))).toEqual(['IMPORTS main.lua -> shop/orders.lua', 'IMPORTS main.lua -> shop/util/init.lua']);
+    expect(e.filter((x) => x.includes('socket') || x.includes('external_service'))).toEqual([]);
+  });
+});
+
+describe('Objective-C', () => {
+  // `.h` headers stay mapped to C++, so fixtures keep interfaces in self-contained `.m` files.
+  const files = {
+    'src/Calc.m': `#import <Foundation/Foundation.h>\n\n@interface Calc : NSObject\n@property int count;\n- (int)add:(int)a with:(int)b;\n+ (instancetype)shared;\n@end\n\n@implementation Calc\n- (int)add:(int)a with:(int)b {\n    return a + b;\n}\n+ (instancetype)shared {\n    return [[Calc alloc] init];\n}\n@end\n`,
+    'lib/Helper.m': `int helper_add(int a, int b) {\n    return a + b;\n}\n`,
+    'src/main.m': `#import <Foundation/Foundation.h>\n#import "Calc.m"\n#import "Helper.m"\n\nint main(void) {\n    Calc *c = [[Calc alloc] init];\n    int y = [c add:1 with:2];\n    [Calc shared];\n    int z = helper_add(y, 1);\n    return z;\n}\n`,
+  };
+
+  it('resolves message sends, quoted imports and -I suffixes', async () => {
+    const e = edges(await build(files));
+    expect(e).toContain('CALLS src/main.m#main -> src/Calc.m#Calc.add:with:');
+    expect(e).toContain('CALLS src/main.m#main -> src/Calc.m#Calc.shared');
+    expect(e).toContain('CALLS src/main.m#main -> lib/Helper.m#helper_add');
+    expect(e).toContain('IMPORTS src/main.m -> src/Calc.m');
+    expect(e).toContain('IMPORTS src/main.m -> lib/Helper.m');
+    // Angle imports are frameworks: they leave no edges.
+    expect(e.filter((x) => x.startsWith('IMPORTS src/main.m'))).toEqual(['IMPORTS src/main.m -> lib/Helper.m', 'IMPORTS src/main.m -> src/Calc.m']);
+  });
+});
+
+describe('Vue', () => {
+  const files = {
+    'src/App.vue': `<template>\n  <main>\n    <UserCard :user="user" />\n    <order-list :items="items" />\n  </main>\n</template>\n\n<script setup lang="ts">\nimport UserCard from './UserCard.vue';\nimport OrderList from './OrderList';\n</script>\n`,
+    'src/UserCard.vue': `<template>\n  <div>{{ user.name }}</div>\n</template>\n\n<script>\nexport default {\n  props: ['user'],\n};\n</script>\n`,
+    'src/OrderList.vue': `<template>\n  <ul>\n    <li v-for="item in items" :key="item.id">{{ item.name }}</li>\n  </ul>\n</template>\n\n<script setup>\nconst props = defineProps(['items']);\n</script>\n`,
+  };
+
+  it('resolves SFC imports (extensionless too) and PascalCase plus kebab-case usage like TSX', async () => {
+    const index = await build(files);
+    const e = edges(index);
+    expect(e).toContain('IMPORTS src/App.vue -> src/UserCard.vue');
+    expect(e).toContain('IMPORTS src/App.vue -> src/OrderList.vue');
+    // Options-API children expose a default export; script-setup children resolve to the file.
+    expect(e).toContain('USES src/App.vue -> src/UserCard.vue#default');
+    expect(e).toContain('USES src/App.vue -> src/OrderList.vue');
+    // Like TSX jsx refs, component usage carries via:'render'.
+    const uses = [...index.store.edges()].filter((x) => x.kind === 'USES' && x.owner === 'src/App.vue');
+    expect(uses).toHaveLength(2);
+    expect(uses.every((x) => x.meta?.via === 'render')).toBe(true);
   });
 });

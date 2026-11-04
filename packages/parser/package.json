@@ -8,11 +8,18 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@binclusive/tree-sitter-swift-wasm": "0.1.0",
     "@eyrie/core": "workspace:*",
+    "@plurnk/plurnk-mimetypes-grammar-dart": "2.0.0",
+    "@tree-sitter-grammars/tree-sitter-kotlin": "1.1.0",
+    "@tree-sitter-grammars/tree-sitter-lua": "0.4.1",
+    "tree-sitter-c": "0.24.1",
     "tree-sitter-c-sharp": "0.23.5",
+    "tree-sitter-cpp": "0.23.4",
     "tree-sitter-go": "0.25.0",
     "tree-sitter-java": "0.23.5",
     "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-objc": "3.0.2",
     "tree-sitter-php": "0.24.2",
     "tree-sitter-python": "0.25.0",
     "tree-sitter-ruby": "0.23.1",
