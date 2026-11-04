@@ -1,17 +1,29 @@
 import type { ArchNode } from '@eyrie/core';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Copy, Loader2, MapPin, RotateCw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { findingChain, RULE_CATEGORY, showAllFindings, showFinding, type FindingView } from '../lib/findings';
+import { findingChain, RULE_CATEGORY, showAllFindings, showFinding, type FindingView, type Severity } from '../lib/findings';
 import { timeAgo } from '../projects/format.js';
 import { store, useStore } from '../state/store';
 
-/** Security findings as inspector rows: scan the rail, open one onto its evidence and map path. */
+type SeverityFilter = 'all' | Severity;
+
+const FILTERS: { id: SeverityFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'high', label: 'High' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'low', label: 'Low' },
+];
+
+const SEVERITY_ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
+
+/** Security findings as inspector cards: scan the rail, open one onto its evidence and map path. */
 export function HealthTab() {
   const health = useStore((s) => s.health);
   const loading = useStore((s) => s.healthLoading);
   const error = useStore((s) => s.healthError);
   const nodes = useStore((s) => s.nodes);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SeverityFilter>('all');
   const [copied, setCopied] = useState<string | null>(null);
   const selection = useStore((s) => s.drawerSelection);
   const opened = useRef<string | null>(null);
@@ -63,72 +75,120 @@ export function HealthTab() {
 
   if (!health && loading) {
     return (
-      <p className="insight-progress" role="status">
-        Checking the map…
-      </p>
+      <>
+        <div className="insight-loading" role="status">
+          <Loader2 size={13} className="insight-spinner" aria-hidden="true" />
+          <span>Checking the map…</span>
+        </div>
+        <ul className="insight-skeleton" aria-hidden="true">
+          <li />
+          <li />
+          <li />
+        </ul>
+      </>
     );
   }
   if (!health) {
     return (
-      <>
+      <div className="insight-empty-state">
+        <ShieldAlert size={18} aria-hidden="true" />
+        <p className="insight-empty-title">The health check did not run</p>
         <p className="insight-error" role="alert">
           {error ?? 'The health check did not run.'}
         </p>
-        <p className="health-retry">
-          <button type="button" onClick={() => store.loadHealth()}>
-            Try again
-          </button>
-        </p>
-      </>
+        <button type="button" className="insight-btn" onClick={() => store.loadHealth()}>
+          <RotateCw size={12} aria-hidden="true" />
+          Try again
+        </button>
+      </div>
     );
   }
 
   const { findings, counts } = health;
+  const sorted = [...findings].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  const visible = filter === 'all' ? sorted : sorted.filter((f) => f.severity === filter);
+
   return (
     <div className="health-tab">
-      <div className="health-strip">
-        <span className="health-strip-count" role="status">
-          {findings.length === 0 ? 'Clean' : `${findings.length} finding${findings.length === 1 ? '' : 's'}`}
-          <span className="visually-hidden">{breakdown(counts) ? `, ${breakdown(counts)}` : ''}</span>
-        </span>
-        <span aria-hidden="true" className="health-strip-chips">
-          {counts.high ? <span className="health-chip high">{counts.high} high</span> : null}
-          {counts.medium ? <span className="health-chip medium">{counts.medium} medium</span> : null}
-          {counts.low ? <span className="health-chip low">{counts.low} low</span> : null}
-        </span>
-        <span className="health-strip-meta">
-          {timeAgo(health.checkedAt, Date.now())} · {health.filesChecked} files
-        </span>
-        <button type="button" className="health-recheck" onClick={() => store.loadHealth()} disabled={loading}>
-          {loading ? 'Checking…' : 'Re-check'}
-        </button>
+      <div className="health-summary" role="status">
+        <div className="health-summary-top">
+          {findings.length === 0 ? (
+            <span className="health-summary-count is-clean">
+              <ShieldCheck size={14} aria-hidden="true" />
+              Clean
+            </span>
+          ) : (
+            <span className="health-summary-count">
+              {findings.length} finding{findings.length === 1 ? '' : 's'}
+              <span className="visually-hidden">{breakdown(counts) ? `, ${breakdown(counts)}` : ''}</span>
+            </span>
+          )}
+          <button type="button" className="insight-btn is-quiet" onClick={() => store.loadHealth()} disabled={loading}>
+            <RotateCw size={12} aria-hidden="true" className={loading ? 'insight-spinner' : undefined} />
+            {loading ? 'Checking…' : 'Re-check'}
+          </button>
+        </div>
+        {findings.length > 0 ? (
+          <div className="health-summary-chips" role="group" aria-label="Filter by severity">
+            {FILTERS.map((f) => {
+              const n = f.id === 'all' ? findings.length : counts[f.id as Severity];
+              if (f.id !== 'all' && !n) return null;
+              return (
+                <button key={f.id} type="button" className="health-chip" data-severity={f.id} aria-pressed={filter === f.id} onClick={() => setFilter(filter === f.id ? 'all' : f.id)}>
+                  <span className="health-chip-dot" aria-hidden="true" />
+                  {n} {f.label.toLowerCase()}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <p className="health-summary-meta">
+          Checked {timeAgo(health.checkedAt, Date.now())} · {health.filesChecked} files
+        </p>
       </div>
 
       {findings.length === 0 ? (
-        <p className="insight-empty">The map is clean: no hardcoded secrets, no unguarded writes, nothing else on the checklist.</p>
+        <div className="insight-empty-state">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <p className="insight-empty-title">Nothing on the checklist</p>
+          <p className="insight-empty">No hardcoded secrets, no unguarded writes, no unverified webhooks. Re-check after your next change.</p>
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="insight-empty">No {filter} findings. The rest of the checklist is clear at this severity.</p>
       ) : (
         <ul className="insp-list">
-          {findings.map((finding, index) => {
+          {visible.map((finding) => {
             const isOpen = openId === finding.id;
             const onMap = finding.componentIds.some((id) => nodes.has(id));
-            const bodyId = `health-body-${index}`;
+            const bodyId = `health-body-${finding.id}`;
+            const route = monoRoute(finding, nodes);
             return (
               <li key={finding.id} className="insp-item" data-open={isOpen} data-severity={finding.severity}>
                 <button type="button" className="insp-head" aria-expanded={isOpen} aria-controls={bodyId} onClick={() => toggle(finding)}>
-                  <span className={`health-dot ${finding.severity}`} aria-hidden="true" />
-                  <span className="insp-title">{finding.title}</span>
-                  <span className="insp-meta">
-                    {finding.severity.toUpperCase()} · {RULE_CATEGORY[finding.rule] ?? finding.rule}
+                  <span className={`health-sev ${finding.severity}`} aria-hidden="true">
+                    {finding.severity === 'high' ? 'H' : finding.severity === 'medium' ? 'M' : 'L'}
+                  </span>
+                  <span className="insp-text">
+                    <span className="insp-title">{finding.title}</span>
+                    <span className="insp-meta">
+                      {finding.severity.toUpperCase()} · {RULE_CATEGORY[finding.rule] ?? finding.rule}
+                    </span>
                   </span>
                   <ChevronDown size={14} className="insp-chevron" aria-hidden="true" />
                 </button>
                 <div className="insp-body" id={bodyId}>
                   <div>
                     <p className="health-evidence">{finding.evidence}</p>
-                    {monoRoute(finding, nodes) ? <p className="health-route">{monoRoute(finding, nodes)}</p> : null}
+                    {route ? <p className="health-route">{route}</p> : null}
                     <div className="health-actions">
-                      {onMap ? <button type="button" onClick={() => showFinding(finding, nodes)}>Show on map</button> : null}
-                      <button type="button" onClick={() => copy(finding)}>
+                      {onMap ? (
+                        <button type="button" className="insight-btn" onClick={() => showFinding(finding, nodes)}>
+                          <MapPin size={12} aria-hidden="true" />
+                          Show on map
+                        </button>
+                      ) : null}
+                      <button type="button" className="insight-btn" onClick={() => copy(finding)}>
+                        {copied === finding.id ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
                         {copied === finding.id ? 'Copied' : 'Copy fix prompt'}
                       </button>
                     </div>

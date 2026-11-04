@@ -1,14 +1,14 @@
-import { X } from 'lucide-react';
+import { History, MessageCircleQuestion, ShieldCheck, X } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
 import { store, useStore, type DrawerTab } from '../state/store';
 import { AskTab } from './AskTab';
 import { HealthTab } from './HealthTab';
 import { RecentTab } from './RecentTab';
 
-const TABS: { id: DrawerTab; label: string }[] = [
-  { id: 'ask', label: 'Ask' },
-  { id: 'health', label: 'Health' },
-  { id: 'recent', label: 'Recent' },
+const TABS: { id: DrawerTab; label: string; icon: typeof ShieldCheck }[] = [
+  { id: 'ask', label: 'Ask', icon: MessageCircleQuestion },
+  { id: 'health', label: 'Health', icon: ShieldCheck },
+  { id: 'recent', label: 'Recent', icon: History },
 ];
 
 /**
@@ -19,7 +19,10 @@ const TABS: { id: DrawerTab; label: string }[] = [
  */
 export function Drawer() {
   const drawer = useStore((s) => s.drawer);
+  const healthCount = useStore((s) => s.health?.findings.length ?? null);
+  const sessions = useStore((s) => s.recent?.sessions ?? null);
   if (!drawer.open) return null;
+  const liveCount = sessions?.filter((s) => !s.endedAt).length ?? 0;
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
@@ -32,22 +35,38 @@ export function Drawer() {
     <aside className="insight-drawer" aria-label="Insights">
       <div className="insight-tabs">
         <div role="tablist" aria-label="Insights">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`insight-tab-${t.id}`}
-              aria-selected={drawer.tab === t.id}
-              aria-controls="insight-panel"
-              tabIndex={drawer.tab === t.id ? 0 : -1}
-              className={drawer.tab === t.id ? 'is-active' : undefined}
-              onClick={() => store.setDrawerTab(t.id)}
-              onKeyDown={onKeyDown}
-            >
-              {t.label}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = drawer.tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`insight-tab-${t.id}`}
+                aria-selected={active}
+                aria-controls="insight-panel"
+                tabIndex={active ? 0 : -1}
+                className={active ? 'is-active' : undefined}
+                onClick={() => store.setDrawerTab(t.id)}
+                onKeyDown={onKeyDown}
+              >
+                <Icon size={13} aria-hidden="true" />
+                <span>{t.label}</span>
+                {t.id === 'health' && healthCount !== null && healthCount > 0 ? (
+                  <span className="insight-tab-badge alert" aria-label={`${healthCount} findings`}>
+                    {healthCount}
+                  </span>
+                ) : null}
+                {t.id === 'recent' && liveCount > 0 ? (
+                  <span className="insight-tab-live" aria-label={`${liveCount} live`}>
+                    <span className="insight-tab-live-dot" aria-hidden="true" />
+                    {liveCount}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
         <button type="button" className="insight-close" aria-label="Close insights" title="Close (Esc)" onClick={() => store.closeDrawer()}>
           <X size={14} aria-hidden="true" />

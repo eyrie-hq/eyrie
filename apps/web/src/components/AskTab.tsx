@@ -1,5 +1,5 @@
 import { archPath } from '@eyrie/lens';
-import { ChevronDown } from 'lucide-react';
+import { ArrowUp, ChevronDown, Copy, Check, History, Loader2, MapPin, Sparkles, Square, Wrench } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { timeAgo } from '../projects/format.js';
 import { api, store, useStore } from '../state/store';
@@ -39,9 +39,11 @@ const BACKENDS = [
   { id: 'openai', label: 'OpenAI' },
 ];
 
+const EXAMPLES = ['Where does checkout write?', 'What breaks if I change the cart service?', 'How does a request reach the database?'];
+
 const recordKey = (record: AskRecordView): string => (record.id === null ? `live-${record.question}` : String(record.id));
 
-/** Ask the map: answers as inspector rows, each openable onto its evidence and map path. */
+/** Ask the map: answers as inspector cards, each openable onto its evidence and map path. */
 export function AskTab() {
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
@@ -52,6 +54,7 @@ export function AskTab() {
   const [failed, setFailed] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const edges = useStore((s) => s.edges);
   const nodes = useStore((s) => s.nodes);
 
@@ -162,16 +165,19 @@ export function AskTab() {
   const autoLabel = serverBackend ? `Auto (${BACKEND_LABEL[serverBackend] ?? serverBackend})` : 'Auto';
   const asked = history ?? [];
   const rows = current && !asked.some((h) => h.id === current.id) ? [current, ...asked] : asked;
+  const noBackend = !serverBackend && pick === 'auto' && history !== null;
 
   return (
     <div className="ask-tab">
       <form className="ask-form" onSubmit={submit}>
-        <label className="ask-label" htmlFor="ask-question">
-          Ask anything about this architecture
-        </label>
-        <div className="ask-row">
+        <div className="ask-composer">
+          <Sparkles size={15} className="ask-composer-icon" aria-hidden="true" />
+          <label className="visually-hidden" htmlFor="ask-question">
+            Ask anything about this architecture
+          </label>
           <input
             id="ask-question"
+            ref={inputRef}
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
@@ -181,32 +187,39 @@ export function AskTab() {
             autoComplete="off"
           />
           {asking ? (
-            <button type="button" className="ask-stop" onClick={() => abort.current?.abort()}>
+            <button type="button" className="ask-submit is-stop" onClick={() => abort.current?.abort()} aria-label="Stop asking">
+              <Square size={12} aria-hidden="true" />
               Stop
             </button>
           ) : (
-            <button type="submit" disabled={!question.trim()}>
+            <button type="submit" className="ask-submit" disabled={!question.trim()} aria-label="Ask the map">
+              <ArrowUp size={14} aria-hidden="true" />
               Ask
             </button>
           )}
         </div>
-        <div className="ask-backends" role="radiogroup" aria-label="Who answers">
-          {BACKENDS.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              role="radio"
-              aria-checked={pick === b.id}
-              tabIndex={pick === b.id ? 0 : -1}
-              title={b.id === 'auto' ? `Server default${serverBackend ? `: ${BACKEND_LABEL[serverBackend] ?? serverBackend}` : ' (none set)'}` : `Answer with ${b.label}`}
-              onClick={() => setPick(b.id)}
-              onKeyDown={onPickKeyDown}
-            >
-              {b.id === 'auto' ? autoLabel : b.label}
-            </button>
-          ))}
+        <div className="ask-backend-row">
+          <span className="ask-backend-label" id="ask-backend-label">
+            Answered by
+          </span>
+          <div className="ask-backends" role="radiogroup" aria-labelledby="ask-backend-label">
+            {BACKENDS.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                role="radio"
+                aria-checked={pick === b.id}
+                tabIndex={pick === b.id ? 0 : -1}
+                title={b.id === 'auto' ? `Server default${serverBackend ? `: ${BACKEND_LABEL[serverBackend] ?? serverBackend}` : ' (none set)'}` : `Answer with ${b.label}`}
+                onClick={() => setPick(b.id)}
+                onKeyDown={onPickKeyDown}
+              >
+                {b.id === 'auto' ? autoLabel : b.label}
+              </button>
+            ))}
+          </div>
         </div>
-        {!serverBackend && pick === 'auto' && history !== null ? <p className="ask-off">No AI backend configured — pick one above, or start Eyrie with --ai.</p> : null}
+        {noBackend ? <p className="ask-off">No AI backend configured — pick one above, or start Eyrie with --ai.</p> : null}
       </form>
 
       {failed ? (
@@ -215,83 +228,139 @@ export function AskTab() {
         </p>
       ) : null}
       {asking ? (
-        <p className="insight-progress" role="status">
-          {BACKEND_LABEL[pick] ?? 'The model'} is reading the map…
-        </p>
+        <div className="insight-loading" role="status">
+          <Loader2 size={13} className="insight-spinner" aria-hidden="true" />
+          <span>{BACKEND_LABEL[pick] ?? 'The model'} is reading the map…</span>
+        </div>
       ) : null}
 
       {rows.length ? (
-        <ul className="insp-list">
-          {rows.map((record) => {
-            const isOpen = current?.id != null ? current.id === record.id : current?.question === record.question && record.id === null;
-            const bodyId = `ask-body-${record.id ?? 'live'}`;
-            return (
-              <li key={recordKey(record)} className="insp-item" data-open={isOpen}>
-                <button
-                  type="button"
-                  className="insp-head"
-                  aria-expanded={isOpen}
-                  aria-controls={bodyId}
-                  onClick={() => open(isOpen ? null : record)}
-                  title={new Date(record.createdAt).toLocaleString()}
-                >
-                  <span className={`ask-status ${record.status}`} role="img" aria-label={record.status} />
-                  <span className="insp-title">{record.question}</span>
-                  <span className="insp-meta">
-                    {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · <time dateTime={new Date(record.createdAt).toISOString()}>{timeAgo(record.createdAt, Date.now())}</time>
-                  </span>
-                  <ChevronDown size={14} className="insp-chevron" aria-hidden="true" />
-                </button>
-                <div className="insp-body" id={bodyId}>
-                  <div>
-                    {record.status === 'ok' && record.answer ? (
-                      <>
-                        <p className="ask-text">{record.answer.answer}</p>
-                        <ol className="ask-steps">
-                          {record.answer.steps.map((s, i) => (
-                            <li key={i}>
-                              <button type="button" className="ask-step" onClick={() => showSteps(record.question, [s])} title="Show this step on the map">
-                                <span className="ask-step-no">{i + 1}</span>
-                                <span>
-                                  {s.text} {s.componentIds.map((id) => labelOf(id)).join(' › ')}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
-                        </ol>
-                      </>
-                    ) : (
-                      <p className="insight-error" role="alert">
-                        {record.status === 'rejected' ? `Rejected: ${record.error}` : (record.error ?? 'The model did not answer.')}
+        <section aria-label="Previous questions">
+          <h3 className="insight-section-title">
+            <History size={12} aria-hidden="true" />
+            Previous questions · {rows.length}
+          </h3>
+          <ul className="insp-list">
+            {rows.map((record) => {
+              const isOpen = current?.id != null ? current.id === record.id : current?.question === record.question && record.id === null;
+              const bodyId = `ask-body-${record.id ?? 'live'}`;
+              const key = recordKey(record);
+              return (
+                <li key={key} className="insp-item" data-open={isOpen}>
+                  <button
+                    type="button"
+                    className="insp-head"
+                    aria-expanded={isOpen}
+                    aria-controls={bodyId}
+                    onClick={() => open(isOpen ? null : record)}
+                    title={new Date(record.createdAt).toLocaleString()}
+                  >
+                    <span className={`ask-status ${record.status}`} aria-hidden="true" />
+                    <span className="insp-text">
+                      <span className="insp-title">{record.question}</span>
+                      <span className="insp-meta">
+                        {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · <time dateTime={new Date(record.createdAt).toISOString()}>{timeAgo(record.createdAt, Date.now())}</time>
+                        {record.status !== 'ok' ? ` · ${record.status}` : ''}
+                      </span>
+                    </span>
+                    <ChevronDown size={14} className="insp-chevron" aria-hidden="true" />
+                  </button>
+                  <div className="insp-body" id={bodyId}>
+                    <div>
+                      {record.status === 'ok' && record.answer ? (
+                        <>
+                          <p className="ask-text">{record.answer.answer}</p>
+                          <ol className="ask-steps">
+                            {record.answer.steps.map((s, i) => (
+                              <li key={i}>
+                                <button type="button" className="ask-step" onClick={() => showSteps(record.question, [s])} title="Show this step on the map">
+                                  <span className="ask-step-no" aria-hidden="true">
+                                    {i + 1}
+                                  </span>
+                                  <span className="ask-step-text">
+                                    <span>{s.text}</span>
+                                    {s.componentIds.length ? (
+                                      <span className="ask-step-chips">
+                                        {s.componentIds.map((id) => (
+                                          <code key={id}>{labelOf(id)}</code>
+                                        ))}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ol>
+                        </>
+                      ) : (
+                        <p className="insight-error" role="alert">
+                          {record.status === 'rejected' ? `Rejected: ${record.error}` : (record.error ?? 'The model did not answer.')}
+                        </p>
+                      )}
+                      <p className="ask-byline">
+                        answered by {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · {record.calls.length} tool call{record.calls.length === 1 ? '' : 's'}
                       </p>
-                    )}
-                    <p className="ask-byline">
-                      answered by {record.model ?? BACKEND_LABEL[record.backend] ?? record.backend} · {record.calls.length} tool calls
-                    </p>
-                    <div className="ask-actions">
-                      {record.status === 'ok' && record.answer?.steps.length ? <button type="button" onClick={replay}>Replay path</button> : null}
-                      {record.status === 'ok' ? <button type="button" onClick={() => copy(record)}>{copied === recordKey(record) ? 'Copied' : 'Copy answer'}</button> : null}
-                      <details className="ask-calls">
-                        <summary>{record.calls.length} tool calls</summary>
-                        <ol>
-                          {record.calls.map((c, i) => (
-                            <li key={i}>
-                              <code>{c.name}</code> {Object.values(c.args ?? {}).filter((v) => typeof v === 'string' || typeof v === 'number').join(' · ')}
-                            </li>
-                          ))}
-                        </ol>
-                      </details>
+                      <div className="ask-actions">
+                        {record.status === 'ok' && record.answer?.steps.length ? (
+                          <button type="button" className="insight-btn" onClick={replay}>
+                            <MapPin size={12} aria-hidden="true" />
+                            Replay path
+                          </button>
+                        ) : null}
+                        {record.status === 'ok' ? (
+                          <button type="button" className="insight-btn" onClick={() => copy(record)}>
+                            {copied === key ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+                            {copied === key ? 'Copied' : 'Copy answer'}
+                          </button>
+                        ) : null}
+                        <details className="ask-calls">
+                          <summary>
+                            <Wrench size={12} aria-hidden="true" />
+                            {record.calls.length} tool call{record.calls.length === 1 ? '' : 's'}
+                          </summary>
+                          <ol>
+                            {record.calls.map((c, i) => (
+                              <li key={i}>
+                                <code>{c.name}</code>
+                                <span>{Object.values(c.args ?? {}).filter((v) => typeof v === 'string' || typeof v === 'number').join(' · ')}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       ) : history === null && !failed ? (
-        <p className="insight-empty">Loading questions…</p>
+        <ul className="insight-skeleton" aria-hidden="true">
+          <li />
+          <li />
+          <li />
+        </ul>
       ) : !asking && !failed ? (
-        <p className="insight-empty">No questions yet. Ask where something lives, what would break, or how a request flows.</p>
+        <div className="insight-empty-state">
+          <Sparkles size={18} aria-hidden="true" />
+          <p className="insight-empty-title">Ask the map anything</p>
+          <p className="insight-empty">Grounded in this repository's graph — every step cites a component, and opens it on the map.</p>
+          <div className="insight-examples">
+            {EXAMPLES.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => {
+                  setQuestion(example);
+                  inputRef.current?.focus();
+                }}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   );
