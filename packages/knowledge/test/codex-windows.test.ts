@@ -85,13 +85,34 @@ describe('Windows Ask Codex', () => {
 
   it.each([
     ['Not logged in', 'Sign in to ChatGPT'],
+    ['Error checking login status: could not read auth.json', 'Your ChatGPT sign-in needs to be renewed.'],
     ['MXC is unavailable', 'required MXC isolation'],
+    ['Error: windows.allow_mxc = false (set by C:\\ProgramData\\OpenAI\\Codex\\requirements.toml)', 'MXC is disabled by Windows Codex configuration or administrator policy.'],
   ])('stops before inference when the launch reports %s', async (stderr, error) => {
     writeFileSync(join(dir, 'codex.exe'), 'stub');
     launch((child) => child.close(1, '', stderr));
     await expect(codexWindowsAskBackend(env).run(request)).rejects.toThrow(error);
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(existsSync(launches[0]!.cwd)).toBe(false);
+  });
+
+  it('asks the user to sign in again when a cached login cannot refresh', async () => {
+    loggedIn();
+    launch((child) => child.close(1, JSON.stringify({
+      type: 'turn.failed',
+      error: { message: 'Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.' },
+    })));
+    await expect(codexWindowsAskBackend(env).run(request)).rejects.toThrow(/^Your ChatGPT sign-in needs to be renewed\./);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(existsSync(launches[1]!.cwd)).toBe(false);
+  });
+
+  it('reports a policy denial when policy changes after the login check', async () => {
+    loggedIn();
+    launch((child) => child.close(1, '', 'MXC refused because windows.allow_mxc = false'));
+    await expect(codexWindowsAskBackend(env).run(request)).rejects.toThrow(/^MXC is disabled/);
+    expect(launches[1]!.args).toContain('--include-managed-config');
+    expect(existsSync(launches[1]!.cwd)).toBe(false);
   });
 
   it.each([

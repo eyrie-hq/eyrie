@@ -10,6 +10,15 @@ import { codexArgs, codexPrompt, parseCodexRun, strictSchema } from './codex.js'
 const AUTH_STORE = 'cli_auth_credentials_store=file';
 const MXC = 'windows.sandbox=mxc';
 const SIGN_IN = 'Sign in to ChatGPT with the dedicated Eyrie Codex profile. See the Windows Ask setup in the README.';
+const SIGN_IN_AGAIN = 'Your ChatGPT sign-in needs to be renewed. Sign in again with the dedicated Eyrie Codex profile. See the Windows Ask setup in the README.';
+
+/** Keep Codex diagnostics private while giving the user the right next step. */
+function codexFailure(output: string): string | undefined {
+  if (/\ballow_mxc\s*=\s*false\b/i.test(output)) {
+    return 'MXC is disabled by Windows Codex configuration or administrator policy. Check with your administrator about Windows Ask.';
+  }
+  if (/your access token could not be refreshed[^\r\n]*\bsign in again\b/i.test(output)) return SIGN_IN_AGAIN;
+}
 
 function mxcConfig(codex: string, work: string, auth: string, env: NodeJS.ProcessEnv): string {
   return [
@@ -120,16 +129,24 @@ export function codexWindowsAskBackend(env: NodeJS.ProcessEnv = process.env): Ai
         const launch = ['-c', MXC, 'sandbox', '--include-managed-config', '--permission-profile', 'eyrie-ask', '--cd', work, '--', codex, '-c', AUTH_STORE];
         const run = (args: string[], input?: string) => runMxc(codex, [...launch, ...args], work, launcherEnv, systemRoot, request, deadline, input);
         const login = await run(['login', 'status']);
-        if (login.code !== 0 && !/not logged in/i.test(login.stdout + login.stderr)) {
-          throw new Error('Could not start Codex with the required MXC isolation. Check Windows MXC support, managed policy, and your Codex CLI version.');
+        const loginOutput = `${login.stdout}\n${login.stderr}`;
+        if (login.code !== 0) {
+          const reason = codexFailure(loginOutput);
+          if (reason) throw new Error(reason);
+          if (/^error checking login status:/im.test(loginOutput)) throw new Error(SIGN_IN_AGAIN);
+          if (!/^not logged in\s*$/im.test(loginOutput)) {
+            throw new Error('Could not start Codex with the required MXC isolation. Check Windows MXC support, managed policy, and your Codex CLI version.');
+          }
         }
-        if (login.code !== 0 || !/logged in using ChatGPT/i.test(login.stdout + login.stderr)) throw new Error(SIGN_IN);
+        if (login.code !== 0 || !/^logged in using ChatGPT\s*$/im.test(loginOutput)) throw new Error(SIGN_IN);
 
         const schemaFile = join(work, 'schema.json');
         const lastMessageFile = join(work, 'answer.json');
         writeFileSync(schemaFile, JSON.stringify(strictSchema(request.schema)));
         const result = await run(['-c', MXC, ...codexArgs({ workDir: work, schemaFile, lastMessageFile })], codexPrompt(request));
-        if (result.code !== 0) throw new Error('Codex could not answer inside MXC. Check your ChatGPT sign-in, usage, and network policy.');
+        if (result.code !== 0) {
+          throw new Error(codexFailure(`${result.stdout}\n${result.stderr}`) ?? 'Codex could not answer inside MXC. Check your ChatGPT sign-in, usage, and network policy.');
+        }
         if (!existsSync(lastMessageFile)) throw new Error('Codex answered without the requested JSON.');
         return parseCodexRun(result.stdout, readFileSync(lastMessageFile, 'utf8'), { answerOnly: true });
       } finally {

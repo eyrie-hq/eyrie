@@ -193,6 +193,8 @@ codex.exe -c cli_auth_credentials_store=file login
 
 Choose **Codex** under **Answered by** when you ask a question. The question and relevant graph context go to OpenAI under your ChatGPT account. To sign out of the dedicated profile, run `codex.exe -c cli_auth_credentials_store=file logout` with the same `CODEX_HOME`.
 
+Codex refreshes the dedicated session automatically when it can. If Ask reports that sign-in needs to be renewed, repeat the sign-in steps above. If Windows Codex policy disables MXC, Ask stops before sending the question to OpenAI.
+
 **Health** — security findings computed from the graph, with no model involved at all. Eight rules, five over one file and three that need the graph:
 
 | Rule | Severity | What it means |
