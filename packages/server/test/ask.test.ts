@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GraphEngine } from '@eyrie/engine';
-import type { AiBackend } from '@eyrie/knowledge';
+import { createAiBackend, type AiBackend } from '@eyrie/knowledge';
 import { EyrieMcp } from '../src/mcp.js';
 import { answerQuestion, resolveAskBackend } from '../src/ask.js';
 
@@ -34,11 +34,13 @@ describe('resolveAskBackend', () => {
     expect(resolveAskBackend(server, 'claude')).not.toBe(server);
   });
 
-  // Codex only runs where Eyrie can sandbox it, and says so when it cannot:
-  // the pick is refused with that reason rather than answered.
-  it('picks Codex on macOS, and refuses it elsewhere with the reason', () => {
-    if (process.platform === 'darwin') expect(resolveAskBackend(null, 'codex')?.name).toBe('codex');
+  it('picks Codex on macOS and Windows, and refuses it elsewhere with the reason', () => {
+    if (process.platform === 'darwin' || process.platform === 'win32') expect(resolveAskBackend(null, 'codex')?.name).toBe('codex');
     else expect(() => resolveAskBackend(null, 'codex')).toThrow('needs macOS');
+  });
+
+  it('keeps Windows Codex out of the startup factory', () => {
+    expect(() => createAiBackend('codex', { platform: 'win32' })).toThrow('needs macOS');
   });
 
   it('refuses unknown or mistyped picks', () => {

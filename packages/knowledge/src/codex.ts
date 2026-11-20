@@ -1,6 +1,6 @@
 /**
  * The Codex CLI as an AI backend: `codex exec`, signed in the way the user
- * already uses it, so Eyrie holds no API key. macOS only for now.
+ * already uses it, so Eyrie holds no API key. This runner uses macOS Seatbelt.
  *
  * Codex's own settings are not enough to stop a model acting on the machine.
  * Checked with Codex 0.160: its command tool cannot be turned off (`unified_exec`
@@ -88,6 +88,10 @@ export function codexArgs(opts: { workDir: string; schemaFile: string; lastMessa
   ];
 }
 
+export function codexPrompt(request: AiRequest): string {
+  return `${request.system}\n\nDo not run commands or invoke Codex tools. For Eyrie graph tools, put requests in the JSON response and Eyrie will run them.\n\n${request.prompt}`;
+}
+
 const sbString = (path: string) => `"${path.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 /**
@@ -134,23 +138,36 @@ export function strictSchema(schema: unknown): unknown {
 }
 
 /** Reads a finished `codex exec --json` run: its JSONL events and the last message. Exported for tests. */
-export function parseCodexRun(events: string, lastMessage: string): AiResult {
+export function parseCodexRun(events: string, lastMessage: string, opts: { answerOnly?: boolean } = {}): AiResult {
   let usage: Record<string, unknown> | undefined;
+  let completed = false;
   for (const line of events.split('\n')) {
     if (!line.trim()) continue;
     let event: { type?: string; item?: { type?: string; exit_code?: number | string; command?: string }; usage?: Record<string, unknown>; error?: { message?: string }; message?: string };
     try {
       event = JSON.parse(line);
     } catch {
+      if (opts.answerOnly) throw new Error('Codex returned invalid events.');
       continue;
     }
-    if (event.type === 'turn.failed' || event.type === 'error') throw new Error(`codex failed: ${event.error?.message ?? event.message ?? 'unknown error'}`.slice(0, 500));
+    if (event.type === 'turn.failed' || event.type === 'error') {
+      if (opts.answerOnly) throw new Error('Codex could not answer. Check your ChatGPT sign-in and usage.');
+      throw new Error(`codex failed: ${event.error?.message ?? event.message ?? 'unknown error'}`.slice(0, 500));
+    }
+    // Codex reports nonfatal warnings as error items. Fatal errors have their own events.
+    if (opts.answerOnly && event.type?.startsWith('item.') && !['agent_message', 'reasoning', 'error'].includes(event.item?.type ?? '')) {
+      throw new Error('Codex attempted to use a tool. Its answer was discarded.');
+    }
     // Commands cannot start inside the outer sandbox. If one ever completes, the run is not trusted.
     if (event.type === 'item.completed' && event.item?.type === 'command_execution' && Number(event.item.exit_code) === 0) {
       throw new Error(`codex ran a command (${String(event.item.command).slice(0, 80)}); its answer is discarded`);
     }
-    if (event.type === 'turn.completed' && event.usage) usage = event.usage;
+    if (event.type === 'turn.completed') {
+      completed = true;
+      if (event.usage) usage = event.usage;
+    }
   }
+  if (opts.answerOnly && !completed) throw new Error('Codex did not complete the answer.');
   let json: unknown;
   try {
     json = JSON.parse(lastMessage.trim());
@@ -259,7 +276,7 @@ export function codexBackend(opts: CodexOptions = {}): AiBackend {
             finish(err as Error);
           }
         });
-        child.stdin.end(`${request.system}\n\nDo not run commands or use any tool. Everything you need is below, and commands are blocked.\n\n${request.prompt}`);
+        child.stdin.end(codexPrompt(request));
       }),
   };
 }

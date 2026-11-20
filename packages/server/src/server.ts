@@ -160,11 +160,18 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         return json(res, 400, { error: (err as Error).message });
       }
       if (!backend) return json(res, 501, { error: 'AI is off. Start Eyrie with --ai, or pick a backend.' });
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      res.once('close', abort);
       try {
-        return json(res, 200, await answerQuestion({ mcp: askMcp(), knowledge: opts.knowledge ?? null, backend, question: body.question, log }));
+        const result = await answerQuestion({ mcp: askMcp(), knowledge: opts.knowledge ?? null, backend, question: body.question, signal: controller.signal, log });
+        if (!res.destroyed) return json(res, 200, result);
       } catch (err) {
-        return json(res, 500, { error: (err as Error).message });
+        if (!res.destroyed) return json(res, 500, { error: (err as Error).message });
+      } finally {
+        res.off('close', abort);
       }
+      return;
     }
     return json(res, 404, { error: 'unknown endpoint' });
   };
