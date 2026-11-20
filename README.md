@@ -7,7 +7,7 @@
 
 Eyrie parses a repository locally, builds a code knowledge graph, derives a small architecture graph from it (pages → API routes → services → data → external services), and shows it as an interactive map. When a file is saved, only the affected part of the graph is recomputed and the change animates into the map: new components appear, edited ones pulse, and every save is recorded on a change tape at the bottom of the screen.
 
-> Status: early. Phase 1 (static architecture map) and Phase 2 (live graph) work end to end for TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust projects. JavaScript (Next.js, Node.js) has the deepest support. Coding agents reach the same graph over MCP through the one `eyrie` command, which the desktop app ships; the map itself answers questions, reports security findings and shows what an agent just changed. The desktop app runs on macOS, Windows and Linux; its builds are not yet signed by Apple or Microsoft. See [Roadmap](#roadmap).
+> Status: early. Phase 1 (static architecture map) and Phase 2 (live graph) work end to end for TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust projects. JavaScript (Next.js, Node.js) has the deepest support. Coding agents reach the same graph over MCP through the one `eyrie` command, which the desktop app ships; the map itself answers questions, reports security findings and shows what an agent just changed. The desktop app runs on macOS, Windows and Linux. See [Roadmap](#roadmap).
 
 An *eyrie* is a bird of prey's nest, built high on a crag — the vantage point you watch the whole territory from.
 
@@ -25,9 +25,9 @@ Download the file for your system from [Releases](https://github.com/eyrie-hq/ey
 | Debian, Ubuntu | `eyrie-desktop_<version>_amd64.deb`, or `_arm64.deb` |
 | Fedora, openSUSE | `eyrie-desktop-<version>-1.x86_64.rpm`, or `.arm64.rpm` |
 
-Each Mac build also comes as a ZIP of the same app.
+The macOS builds are also available as ZIP files.
 
-**The first time you open it.** The builds are not signed by Apple or Microsoft yet, so each system warns you once:
+**The first time you run Eyrie.** The macOS app has an ad hoc signature and the Windows installer is unsigned. You may see a security warning when you install or open the app on these platforms.
 
 - **macOS:** drag Eyrie to Applications and open it. When macOS says it cannot verify the app, open **System Settings → Privacy & Security**, choose **Open Anyway** next to Eyrie, and confirm.
 - **Windows:** when SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. The installer needs no administrator rights: it installs Eyrie for your user, adds it to the Start menu and opens it.
@@ -55,13 +55,15 @@ gh attestation verify Eyrie-<version>-arm64.dmg --repo eyrie-hq/eyrie
 
 **Updating.** There is no automatic update yet. Download the new version and install it over the old one; your projects and settings stay.
 
-**Uninstalling, and where Eyrie keeps its data.** Uninstalling removes the app but leaves its data; delete the two folders as well to remove everything.
+**Uninstalling, and where Eyrie keeps its data.** Uninstalling leaves your project list, settings and index. Delete the folders below to remove that data.
 
 | System | Uninstall | Project list and settings | Index cache, shared with the CLI |
 | --- | --- | --- | --- |
 | macOS | Drag Eyrie from Applications to the Bin | `~/Library/Application Support/Eyrie` | `~/.eyrie` |
 | Windows | Settings → Apps → Installed apps → Eyrie → Uninstall | `%APPDATA%\Eyrie` | `%USERPROFILE%\.eyrie` |
 | Linux | `sudo apt remove eyrie-desktop` or `sudo dnf remove eyrie-desktop` | `~/.config/Eyrie` | `~/.eyrie` |
+
+On Windows, the [Codex profile used by Ask](#ask-health-and-recent-work) is stored separately in `%LOCALAPPDATA%\Eyrie\codex-ask`.
 
 The app also carries the `eyrie` command for coding agents, and can install it for terminal use into `~/.eyrie/bin` (`%APPDATA%\Eyrie\bin` on Windows); see [Use it from a coding agent](#use-it-from-a-coding-agent-mcp).
 
@@ -91,7 +93,7 @@ pnpm start -- /path/to/your/repo
 
 This builds the UI, indexes the repository, and opens `http://127.0.0.1:4319/?token=…` in your browser. Leave it running and edit code in the repository; the map follows.
 
-Options: `--port <n>`, `--host <h>`, `--token <t>`, `--no-open`, `--no-watch` (index once), `--reset` (ignore the cache), `--ai <backend>` and `--ai-model <m>` — the backend is `claude`, `codex`, `muse` or `openai`, and turns on notes on commits and answers to questions (see [Commit history and AI notes](#commit-history-and-ai-notes)).
+Options include `--port <n>`, `--host <h>`, `--token <t>`, `--no-open`, `--no-watch` (index once) and `--reset` (ignore the cache). Use `--ai <backend>` to turn on [commit notes](#commit-history-and-ai-notes) and set the default for Ask. Use `--ai-model <m>` to choose the model.
 
 The same command has two more jobs: `eyrie mcp` serves the repository to coding agents, and `eyrie init-agents` tells the repository's agents that it is there. `eyrie --help` lists everything.
 
@@ -377,7 +379,7 @@ The other languages are tested the same way, with small in-memory apps per langu
 
 During `pnpm dev`, open `http://localhost:5173/?token=dev`.
 
-**Releases.** Pushing a tag `v<version>` that matches `apps/desktop/package.json` runs [`release.yml`](.github/workflows/release.yml): it builds the desktop app on macOS (Apple silicon and Intel), Windows and Linux (x64 and arm64), each on its own kind of runner, checks each build with `pnpm --filter @eyrie/desktop smoke`, and attaches the installers, `SHA256SUMS` and build provenance to a draft release. A person reviews the draft and publishes it. Pull requests that change the desktop app run the same builds and keep the installers as workflow artifacts for a week.
+**Releases.** Pushing a tag `v<version>` that matches `apps/desktop/package.json` runs [`release.yml`](.github/workflows/release.yml). It builds the desktop app for macOS (Apple silicon and Intel), Windows (x64) and Linux (x64 and arm64), each on its own kind of runner. It checks each build with `pnpm --filter @eyrie/desktop smoke` and attaches the installers, `SHA256SUMS` and build provenance to a draft release. A person reviews the draft and publishes it. Pull requests that change the desktop app run the same builds and keep the installers as workflow artifacts for a week.
 
 To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed` on your `PATH`; set `EYRIE_EDITOR` to choose one.
 
@@ -387,7 +389,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - [x] **Phase 2: live graph.** File watcher, incremental resolution with reverse-dependency invalidation, graph diffs, WebSocket events, animated updates, stable layout, change tape.
 - [ ] **Phase 3: navigation.** Done: search, open in editor, jump to line, category filters, data-flow, sequence and System lenses. Next: nested group boundaries, expanding a box in place.
 - [ ] **Phase 4: graph intelligence.** Done: trace (downstream) and impact (upstream) on the architecture graph, the shortest path between two components (MCP `find_path`), and highlighting — one mechanism that rings a set of components and draws a path heavier, shared by every lens, 2D and 3D. Next: path finding from the UI (pick two components), code-level impact.
-- [ ] **Phase 5: AI understanding, and findings.** Done: commit history in `knowledge.db`; optional AI notes per commit and per component an agent changed; a health check of eight deterministic rules over the graph, with no model involved, in the app and as the MCP `check` tool; Ask the map, where a model may only call the read-only tools and an answer citing anything they did not return is rejected; four backends — Claude Code, Codex, Muse or any OpenAI-compatible API — off by default and available from the Ask tab. Next: architecture rules beyond security, and findings with history, verdicts and exceptions ([Knowledge Loop](docs/06-implementation-plan/feature-knowledge/README.md)); recorded Ask eval scores across the backends.
+- [ ] **Phase 5: AI understanding, and findings.** Done: commit history in `knowledge.db`; optional AI notes per commit and per component an agent changed; a health check of eight deterministic rules over the graph, with no model involved, in the app and as the MCP `check` tool; Ask the map, which uses read-only tools and checks citations against their results. See [Ask](#ask-health-and-recent-work) for backend options and platform support. Next: architecture rules beyond security, and findings with history, verdicts and exceptions ([Knowledge Loop](docs/06-implementation-plan/feature-knowledge/README.md)); recorded Ask eval scores across the backends.
 - [ ] **Phase 6: Git intelligence.** Working-tree overlays, branch and commit architecture diffs, timeline.
 - [ ] **Phase 7: coding-agent integration.** Done: one `eyrie` command with the MCP server inside it, shipped with the desktop app and wired up from a project's ⋯ menu; `eyrie init-agents`, so agents have a reason to call the tools; `record_intent` sessions with the components each one changed and why; the `check` tool, the second half of the agent guardrail; agent attribution from `Co-Authored-By` trailers. Next: Claude Code hooks that hand new findings back to the agent as it edits, and attributing saves made outside a recorded session.
 - [ ] **Desktop app.** Done: an Electron shell (Electron Forge, [`apps/desktop`](apps/desktop/README.md)) around the same UI, running the engine in a utility process, with installers for macOS (DMG, ZIP), Windows (Squirrel) and Linux (deb, rpm) built and checked on each platform by the release workflow; the `eyrie` command bundled in the app, installable to a per-user folder, with Connect Coding Agents for Claude Code, Codex, Gemini CLI and Cursor ([plan](docs/06-implementation-plan/feature-mcp-desktop/README.md)). Next: signing and notarization, automatic updates, and background watching.
@@ -405,7 +407,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - Dart: `package:` imports resolve without reading `pubspec.yaml`, and explicit type arguments on method calls (`o.m<int>()`) are not followed.
 - Outside JavaScript, what a dynamic language decides at run time is not followed: Ruby metaprogramming, PHP magic methods, Python `getattr`, Lua metatables and dynamic `require()`, DI containers configured outside the code, and Rust macro bodies (such as `sqlx::query!`).
 - A frontend that calls the backend through a generated API client (OpenAPI SDKs) shows no HTTP links to the backend's routes; only direct `fetch` / `axios` calls are matched.
-- The desktop builds are not signed by Apple or Microsoft, so each system warns the first time Eyrie opens, and there are no automatic updates yet.
+- macOS and Windows may show a security warning when you first [install or open Eyrie](#install). There are no automatic updates yet.
 - **`@eyrie-hq/cli` is not on npm yet.** The desktop builds ship first and the npm publish is held back to a later release, so the `npx -y @eyrie-hq/cli` lines above do not work today: use the `eyrie` command the desktop app installs, or a source checkout.
 - **The health check is eight rules, not a scanner.** It finds what those rules describe and nothing else, and it only sees what the parser resolved: a guard it cannot follow (a framework's own middleware, a DI container, an import it could not resolve) reads as no guard. Its false-positive rate has been measured on `fixtures/bookstore-app` (4 findings, all true) and on Eyrie itself (9, none in production code); a run over a large third-party repository is still open.
 - **Ask needs a model.** It is off until you pick a backend, each backend needs its own CLI signed in (or an API key), and answers are only as good as the questions the tools can answer — it cannot read your code, by design. The ten-question eval in `scripts/ask-eval/` validates the question set; scores from live models are not recorded yet.
