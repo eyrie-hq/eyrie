@@ -372,4 +372,13 @@ describe('Codex backend', () => {
     expect(createAiBackend('off')).toBeNull();
     expect(() => createAiBackend('gpt')).toThrow(/Unknown AI backend "gpt". Available: claude, codex/);
   });
+
+  it('rejects model tool events and incomplete streams in answer-only runs', () => {
+    const complete = JSON.stringify({ type: 'turn.completed' });
+    const command = JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', exit_code: 1 } });
+    const warning = JSON.stringify({ type: 'item.completed', item: { type: 'error', message: 'nonfatal warning' } });
+    expect(() => parseCodexRun(`${command}\n${complete}`, '{}', { answerOnly: true })).toThrow('attempted to use a tool');
+    expect(() => parseCodexRun('', '{}', { answerOnly: true })).toThrow('did not complete');
+    expect(parseCodexRun(`${warning}\n${complete}`, '{}', { answerOnly: true }).json).toEqual({});
+  });
 });

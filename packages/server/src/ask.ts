@@ -4,7 +4,7 @@
  * Answers are stored in knowledge.db when the server has one, with the model
  * that wrote them and the tool calls they made.
  */
-import { ask, createAiBackend, type AiBackend, type AskResult, type AskTools, type ProjectKnowledge } from '@eyrie/knowledge';
+import { ask, codexWindowsAskBackend, createAiBackend, type AiBackend, type AskResult, type AskTools, type ProjectKnowledge } from '@eyrie/knowledge';
 import type { EyrieMcp } from './mcp.js';
 
 /**
@@ -15,6 +15,7 @@ import type { EyrieMcp } from './mcp.js';
 export function resolveAskBackend(server: AiBackend | null | undefined, name: unknown): AiBackend | null {
   if (name === undefined || name === null || name === 'auto') return server ?? null;
   if (typeof name !== 'string' || !name) throw new Error('Pick a backend: auto, claude, codex, muse, or openai.');
+  if (name === 'codex' && process.platform === 'win32') return codexWindowsAskBackend();
   return createAiBackend(name);
 }
 

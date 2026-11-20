@@ -6,6 +6,7 @@ export { MAX_NOTED_COMPONENTS, noteRequest, noteSessionChanges, validateSessionN
 export { AI_BACKENDS, createAiBackend, type AiBackendName } from './backends.js';
 export { claudeArgs, claudeCodeBackend, parseClaudeOutput, type ClaudeCodeOptions } from './claude.js';
 export { CODEX_DISABLED_FEATURES, codexArgs, codexBackend, parseCodexRun, seatbeltProfile, strictSchema, type CodexOptions } from './codex.js';
+export { codexWindowsAskBackend } from './codex-windows.js';
 export { museArgs, museBackend, musePrompt, parseMuseRun, type MuseOptions } from './muse.js';
 export { OPENAI_DEFAULT_BASE_URL, OPENAI_DEFAULT_MODEL, openaiBackend, openaiBody, openaiConfig, parseOpenaiResponse, type OpenAiConfig, type OpenAiOptions } from './openai.js';
 export { agentOfClient, agentsOf, headCommit, isTracked, readCommits, recentHashes, type CommitFile, type GitCommit } from './git.js';

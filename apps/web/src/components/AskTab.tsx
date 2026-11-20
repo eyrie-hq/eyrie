@@ -187,7 +187,10 @@ export function AskTab() {
             autoComplete="off"
           />
           {asking ? (
-            <button type="button" className="ask-submit is-stop" onClick={() => abort.current?.abort()} aria-label="Stop asking">
+            <button type="button" className="ask-submit is-stop" onClick={(event) => {
+              event.preventDefault();
+              abort.current?.abort();
+            }} aria-label="Stop asking">
               <Square size={12} aria-hidden="true" />
               Stop
             </button>

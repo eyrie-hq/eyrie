@@ -7,7 +7,7 @@
 
 Eyrie parses a repository locally, builds a code knowledge graph, derives a small architecture graph from it (pages → API routes → services → data → external services), and shows it as an interactive map. When a file is saved, only the affected part of the graph is recomputed and the change animates into the map: new components appear, edited ones pulse, and every save is recorded on a change tape at the bottom of the screen.
 
-> Status: early. Phase 1 (static architecture map) and Phase 2 (live graph) work end to end for TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust projects. JavaScript (Next.js, Node.js) has the deepest support. Coding agents reach the same graph over MCP through the one `eyrie` command, which the desktop app ships; the map itself answers questions, reports security findings and shows what an agent just changed. The desktop app runs on macOS, Windows and Linux; its builds are not yet signed by Apple or Microsoft. See [Roadmap](#roadmap).
+> Status: early. Phase 1 (static architecture map) and Phase 2 (live graph) work end to end for TypeScript/JavaScript, Python, Go, Java, C#, PHP, Ruby and Rust projects. JavaScript (Next.js, Node.js) has the deepest support. Coding agents reach the same graph over MCP through the one `eyrie` command, which the desktop app ships; the map itself answers questions, reports security findings and shows what an agent just changed. The desktop app runs on macOS, Windows and Linux. See [Roadmap](#roadmap).
 
 An *eyrie* is a bird of prey's nest, built high on a crag — the vantage point you watch the whole territory from.
 
@@ -25,9 +25,9 @@ Download the file for your system from [Releases](https://github.com/eyrie-hq/ey
 | Debian, Ubuntu | `eyrie-desktop_<version>_amd64.deb`, or `_arm64.deb` |
 | Fedora, openSUSE | `eyrie-desktop-<version>-1.x86_64.rpm`, or `.arm64.rpm` |
 
-Each Mac build also comes as a ZIP of the same app.
+The macOS builds are also available as ZIP files.
 
-**The first time you open it.** The builds are not signed by Apple or Microsoft yet, so each system warns you once:
+**The first time you run Eyrie.** The macOS app has an ad hoc signature and the Windows installer is unsigned. You may see a security warning when you install or open the app on these platforms.
 
 - **macOS:** drag Eyrie to Applications and open it. When macOS says it cannot verify the app, open **System Settings → Privacy & Security**, choose **Open Anyway** next to Eyrie, and confirm.
 - **Windows:** when SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. The installer needs no administrator rights: it installs Eyrie for your user, adds it to the Start menu and opens it.
@@ -55,13 +55,15 @@ gh attestation verify Eyrie-<version>-arm64.dmg --repo eyrie-hq/eyrie
 
 **Updating.** There is no automatic update yet. Download the new version and install it over the old one; your projects and settings stay.
 
-**Uninstalling, and where Eyrie keeps its data.** Uninstalling removes the app but leaves its data; delete the two folders as well to remove everything.
+**Uninstalling, and where Eyrie keeps its data.** Uninstalling leaves your project list, settings and index. Delete the folders below to remove that data.
 
 | System | Uninstall | Project list and settings | Index cache, shared with the CLI |
 | --- | --- | --- | --- |
 | macOS | Drag Eyrie from Applications to the Bin | `~/Library/Application Support/Eyrie` | `~/.eyrie` |
 | Windows | Settings → Apps → Installed apps → Eyrie → Uninstall | `%APPDATA%\Eyrie` | `%USERPROFILE%\.eyrie` |
 | Linux | `sudo apt remove eyrie-desktop` or `sudo dnf remove eyrie-desktop` | `~/.config/Eyrie` | `~/.eyrie` |
+
+On Windows, the [Codex profile used by Ask](#ask-health-and-recent-work) is stored separately in `%LOCALAPPDATA%\Eyrie\codex-ask`.
 
 The app also carries the `eyrie` command for coding agents, and can install it for terminal use into `~/.eyrie/bin` (`%APPDATA%\Eyrie\bin` on Windows); see [Use it from a coding agent](#use-it-from-a-coding-agent-mcp).
 
@@ -91,7 +93,7 @@ pnpm start -- /path/to/your/repo
 
 This builds the UI, indexes the repository, and opens `http://127.0.0.1:4319/?token=…` in your browser. Leave it running and edit code in the repository; the map follows.
 
-Options: `--port <n>`, `--host <h>`, `--token <t>`, `--no-open`, `--no-watch` (index once), `--reset` (ignore the cache), `--ai <backend>` and `--ai-model <m>` — the backend is `claude`, `codex`, `muse` or `openai`, and turns on notes on commits and answers to questions (see [Commit history and AI notes](#commit-history-and-ai-notes)).
+Options include `--port <n>`, `--host <h>`, `--token <t>`, `--no-open`, `--no-watch` (index once) and `--reset` (ignore the cache). Use `--ai <backend>` to turn on [commit notes](#commit-history-and-ai-notes) and set the default for Ask. Use `--ai-model <m>` to choose the model.
 
 The same command has two more jobs: `eyrie mcp` serves the repository to coding agents, and `eyrie init-agents` tells the repository's agents that it is there. `eyrie --help` lists everything.
 
@@ -173,7 +175,7 @@ A name that matches several components is refused with the candidates rather tha
 
 Whenever Eyrie opens or scans a project, it records the commits it has not seen yet in the project's `knowledge.db`: the message, the author and any coding agent in a `Co-Authored-By` trailer, the files changed with line counts, and the architecture components those files belong to. While a project is open it checks for new commits every 5 seconds.
 
-Optionally, Eyrie has each commit **noted** by an AI backend: what the commit is for, whether what it changed matches its message, and its architectural risk. A commit titled "fix: typo in checkout" that also edits the data model is flagged. Turn it on per project in the desktop app (**Analyse Commits** in the project's ⋯ menu: Claude, Codex or Muse), or with `--ai <backend>` (or `EYRIE_AI`) on the command line, where the backend is `claude`, `codex`, `muse` or `openai`. It is off by default. The same backend answers questions through the `ask` MCP tool, and is the default in the app's Ask tab, where a question can also pick its own backend (see [Ask, health and recent work](#ask-health-and-recent-work)). Codex is available on macOS only for now, because Eyrie runs it inside a macOS sandbox (see [Privacy and security](#privacy-and-security)). On Windows, Claude Code must be the `claude.exe` from Anthropic's native installer: Eyrie's instructions span several lines, and the npm package's `claude.cmd` cannot be given those.
+Optionally, Eyrie has each commit **noted** by an AI backend: what the commit is for, whether what it changed matches its message, and its architectural risk. A commit titled "fix: typo in checkout" that also edits the data model is flagged. To turn on notes for a project, choose a backend under **Analyse Commits** in the project's ⋯ menu, or use `--ai <backend>` or `EYRIE_AI` on the command line. The choices are Claude (`claude`), Muse (`muse`) and, on macOS, Codex (`codex`). On the command line you can also use `openai`. Notes are off by default. The backend you choose also answers questions through the `ask` MCP tool and is the default in the app's [Ask tab](#ask-health-and-recent-work). On Windows, Claude Code must be the `claude.exe` from Anthropic's native installer: Eyrie's instructions span several lines, and the npm package's `claude.cmd` cannot be given those.
 
 Notes are opinions, kept beside the facts and labelled with the model that wrote them. Every observation must cite a file or component the commit actually touched, or the note is rejected. A note never becomes a dependency, a finding or a rule.
 
@@ -181,7 +183,17 @@ Notes are opinions, kept beside the facts and labelled with the model that wrote
 
 Three things share one **insight drawer** on the left of the map: press `A`, or use the Insights group in the top bar; `Esc` closes it. None of them is a new lens — each marks components on whatever lens is open and dims the rest, so you stay where you were. Agents see the same three: `ask` and `check` are MCP tools, and Recent is built from what agents report through `record_intent`.
 
-**Ask** — a plain-language question answered by a model that may only call Eyrie's read-only tools. It cannot read files. The answer comes back as numbered steps, each citing components; **a step citing anything the tools did not return is rejected rather than shown**, the same rule AI commit notes follow. Pick who answers per question — Claude Code, Codex, Muse or an OpenAI-compatible API — and that pick is the consent that turns AI on for that one question, so the server needs no `--ai`. Every answer names the model that wrote it and lists the tool calls it made; *Replay path* walks the cited path on the map, and the cited components stay ringed with their step numbers.
+**Ask** — a plain-language question answered by a model that may only call Eyrie's read-only tools. It cannot read files. The answer comes back as numbered steps, each citing components; **a step citing anything the tools did not return is rejected rather than shown**, the same rule AI commit notes follow. Use **Answered by** to choose Claude Code, Codex, Muse or an OpenAI-compatible API. Choosing who answers lets you use Ask even if the server started without `--ai`. Every answer names the model that wrote it and lists the tool calls it made; *Replay path* walks the cited path on the map, and the cited components stay ringed with their step numbers.
+
+**Codex** is available in Ask on macOS and Windows. On macOS, Ask uses your existing Codex sign-in. On Windows, use the native `codex.exe` on `PATH` and a Windows build that supports [Microsoft Execution Containers (MXC)](https://learn.chatgpt.com/docs/windows/windows-sandbox#mxc-compatibility). Then open PowerShell and sign in to ChatGPT with Eyrie's dedicated Codex profile.
+
+```powershell
+$env:CODEX_HOME = Join-Path $env:LOCALAPPDATA 'Eyrie\codex-ask'
+New-Item -ItemType Directory -Path $env:CODEX_HOME -Force | Out-Null
+codex.exe -c cli_auth_credentials_store=file login
+```
+
+Codex refreshes the Windows session when it can. If Ask prompts you to sign in again, repeat those steps. To sign out, run `codex.exe -c cli_auth_credentials_store=file logout` with the same `CODEX_HOME`. If Codex policy disables MXC, Ask stops before sending your question to OpenAI.
 
 **Health** — security findings computed from the graph, with no model involved at all. Eight rules, five over one file and three that need the graph:
 
@@ -295,11 +307,13 @@ git log ── new commits ──► knowledge.db ◄── components each comm
 
 **Eyrie has no accounts, no telemetry and no server of its own.** It stores two files per repository under `~/.eyrie/repos/<hash>/`: an analysis cache (`graph.db`: file paths, symbol names and the graph built from them) and `knowledge.db`, holding the commits it has recorded (messages, authors' and co-authors' names and email addresses as git has them, changed paths), the agent sessions reported through `record_intent`, the questions asked and the answers given, and any AI notes. Delete either at any time.
 
-- **With AI notes off, the default, nothing leaves your machine.** Eyrie makes no network requests; fonts are bundled. The desktop app's window loads only Eyrie's own pages, served by its local engine; links open in your browser, and spellcheck is off, so Chromium downloads no dictionaries.
+- **With AI off, the default, nothing leaves your machine.** Eyrie makes no network requests; fonts are bundled. The desktop app's window loads only Eyrie's own pages, served by its local engine; links open in your browser, and spellcheck is off, so Chromium downloads no dictionaries.
 - **The Windows installer** downloads Eyrie's icon from this repository on GitHub once, while installing, to show in Installed apps. That is the installer (Squirrel) doing it, not Eyrie.
-- **With AI on** for a project (commit notes, the Ask tab, the `ask` tool), Eyrie runs your chosen backend. It sends commit messages, author names, changed file paths with line counts and the names of the architecture components involved, and never source code.
+- **With AI on**, Eyrie uses the backend you set for the project or choose in Ask. For commit notes, it sends commit messages, changed file paths with line counts and the names of the architecture components involved. Ask sends your question and results from the graph, which can include the absolute project path, file paths, declaration signatures, component summaries drawn from doc comments, and recent commit subjects.
   - **Claude Code** runs with no tools, no MCP servers and none of your settings, in an empty temporary folder, so the model can read nothing else and change nothing. It sends to Anthropic under your own account.
-  - **Codex** keeps a command tool that cannot be turned off, and its own read-only sandbox still lets commands read any of your files. So Eyrie runs Codex itself inside a macOS sandbox: it can write nowhere except one empty workspace (holding a copy of Codex's login) and `/dev`, and it cannot read file contents or list folders in your home folder, your temporary folder or on external drives. Codex's command sandbox cannot start inside it, so no command runs at all, and Codex also runs read-only, without your config, rules, saved session, web search, connectors, plugins or its code-mode tools. Tested with Codex's own protections deliberately switched off: its patch tool and shell could write only inside the workspace, and reading `~/.ssh` was refused. System files outside your home folder, such as `/etc/hosts`, stay readable, and no command can run to read them. It sends to OpenAI under your own account.
+  - **Codex** sends requests to OpenAI under your own account. Its read-only sandbox still lets commands read files, so Eyrie also runs the whole CLI inside an operating system sandbox. When answering, Codex skips user config, rules and saved sessions. Eyrie turns off web search, connectors, plugins and code-mode tools.
+    - **macOS.** Seatbelt limits writes to a temporary workspace (holding a copy of your Codex login) and `/dev`. It blocks file reads and directory listings in your home folder, elsewhere in your temporary folder and on external drives. Codex's command sandbox cannot start inside Seatbelt, so model-initiated commands do not run. With Codex's own protections switched off in testing, its patch tool and shell could write only inside the workspace, and access to `~/.ssh` was refused. The CLI itself can still read system files such as `/etc/hosts`.
+    - **Windows.** In Ask, MXC gives the CLI access to a temporary workspace, its own executable, the minimum system paths and the dedicated Eyrie login folder. The proxy allows `chatgpt.com` and `auth.openai.com`. MXC permits access to services on the host's loopback interface with the proxy enabled. Eyrie restricts native tools and discards answers from runs that report a native tool event.
   - **Muse** runs with writing, shell commands and web access turned off, in an empty temporary folder, so the model can read nothing else and change nothing. It sends to the model provider you signed in with, under your own account.
   - **OpenAI-compatible API** (command line only) posts to the endpoint you configure (`EYRIE_OPENAI_BASE_URL`, defaulting to OpenAI) with your API key (`EYRIE_OPENAI_API_KEY`). It sends to that endpoint under your own account.
 - The server binds to `127.0.0.1`, requires a random per-run access token, and rejects requests whose `Host` header is not local (DNS-rebinding protection).
@@ -365,7 +379,7 @@ The other languages are tested the same way, with small in-memory apps per langu
 
 During `pnpm dev`, open `http://localhost:5173/?token=dev`.
 
-**Releases.** Pushing a tag `v<version>` that matches `apps/desktop/package.json` runs [`release.yml`](.github/workflows/release.yml): it builds the desktop app on macOS (Apple silicon and Intel), Windows and Linux (x64 and arm64), each on its own kind of runner, checks each build with `pnpm --filter @eyrie/desktop smoke`, and attaches the installers, `SHA256SUMS` and build provenance to a draft release. A person reviews the draft and publishes it. Pull requests that change the desktop app run the same builds and keep the installers as workflow artifacts for a week.
+**Releases.** Pushing a tag `v<version>` that matches `apps/desktop/package.json` runs [`release.yml`](.github/workflows/release.yml). It builds the desktop app for macOS (Apple silicon and Intel), Windows (x64) and Linux (x64 and arm64), each on its own kind of runner. It checks each build with `pnpm --filter @eyrie/desktop smoke` and attaches the installers, `SHA256SUMS` and build provenance to a draft release. A person reviews the draft and publishes it. Pull requests that change the desktop app run the same builds and keep the installers as workflow artifacts for a week.
 
 To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed` on your `PATH`; set `EYRIE_EDITOR` to choose one.
 
@@ -375,7 +389,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - [x] **Phase 2: live graph.** File watcher, incremental resolution with reverse-dependency invalidation, graph diffs, WebSocket events, animated updates, stable layout, change tape.
 - [ ] **Phase 3: navigation.** Done: search, open in editor, jump to line, category filters, data-flow, sequence and System lenses. Next: nested group boundaries, expanding a box in place.
 - [ ] **Phase 4: graph intelligence.** Done: trace (downstream) and impact (upstream) on the architecture graph, the shortest path between two components (MCP `find_path`), and highlighting — one mechanism that rings a set of components and draws a path heavier, shared by every lens, 2D and 3D. Next: path finding from the UI (pick two components), code-level impact.
-- [ ] **Phase 5: AI understanding, and findings.** Done: commit history in `knowledge.db`; optional AI notes per commit and per component an agent changed; a health check of eight deterministic rules over the graph, with no model involved, in the app and as the MCP `check` tool; Ask the map, where a model may only call the read-only tools and an answer citing anything they did not return is rejected; four backends — Claude Code, Codex, Muse or any OpenAI-compatible API — off by default, pickable per question. Next: architecture rules beyond security, and findings with history, verdicts and exceptions ([Knowledge Loop](docs/06-implementation-plan/feature-knowledge/README.md)); recorded Ask eval scores across the backends.
+- [ ] **Phase 5: AI understanding, and findings.** Done: commit history in `knowledge.db`; optional AI notes per commit and per component an agent changed; a health check of eight deterministic rules over the graph, with no model involved, in the app and as the MCP `check` tool; Ask the map, which uses read-only tools and checks citations against their results. See [Ask](#ask-health-and-recent-work) for backend options and platform support. Next: architecture rules beyond security, and findings with history, verdicts and exceptions ([Knowledge Loop](docs/06-implementation-plan/feature-knowledge/README.md)); recorded Ask eval scores across the backends.
 - [ ] **Phase 6: Git intelligence.** Working-tree overlays, branch and commit architecture diffs, timeline.
 - [ ] **Phase 7: coding-agent integration.** Done: one `eyrie` command with the MCP server inside it, shipped with the desktop app and wired up from a project's ⋯ menu; `eyrie init-agents`, so agents have a reason to call the tools; `record_intent` sessions with the components each one changed and why; the `check` tool, the second half of the agent guardrail; agent attribution from `Co-Authored-By` trailers. Next: Claude Code hooks that hand new findings back to the agent as it edits, and attributing saves made outside a recorded session.
 - [ ] **Desktop app.** Done: an Electron shell (Electron Forge, [`apps/desktop`](apps/desktop/README.md)) around the same UI, running the engine in a utility process, with installers for macOS (DMG, ZIP), Windows (Squirrel) and Linux (deb, rpm) built and checked on each platform by the release workflow; the `eyrie` command bundled in the app, installable to a per-user folder, with Connect Coding Agents for Claude Code, Codex, Gemini CLI and Cursor ([plan](docs/06-implementation-plan/feature-mcp-desktop/README.md)). Next: signing and notarization, automatic updates, and background watching.
@@ -393,7 +407,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - Dart: `package:` imports resolve without reading `pubspec.yaml`, and explicit type arguments on method calls (`o.m<int>()`) are not followed.
 - Outside JavaScript, what a dynamic language decides at run time is not followed: Ruby metaprogramming, PHP magic methods, Python `getattr`, Lua metatables and dynamic `require()`, DI containers configured outside the code, and Rust macro bodies (such as `sqlx::query!`).
 - A frontend that calls the backend through a generated API client (OpenAPI SDKs) shows no HTTP links to the backend's routes; only direct `fetch` / `axios` calls are matched.
-- The desktop builds are not signed by Apple or Microsoft, so each system warns the first time Eyrie opens, and there are no automatic updates yet.
+- macOS and Windows may show a security warning when you first [install or open Eyrie](#install). There are no automatic updates yet.
 - **`@eyrie-hq/cli` is not on npm yet.** The desktop builds ship first and the npm publish is held back to a later release, so the `npx -y @eyrie-hq/cli` lines above do not work today: use the `eyrie` command the desktop app installs, or a source checkout.
 - **The health check is eight rules, not a scanner.** It finds what those rules describe and nothing else, and it only sees what the parser resolved: a guard it cannot follow (a framework's own middleware, a DI container, an import it could not resolve) reads as no guard. Its false-positive rate has been measured on `fixtures/bookstore-app` (4 findings, all true) and on Eyrie itself (9, none in production code); a run over a large third-party repository is still open.
 - **Ask needs a model.** It is off until you pick a backend, each backend needs its own CLI signed in (or an API key), and answers are only as good as the questions the tools can answer — it cannot read your code, by design. The ten-question eval in `scripts/ask-eval/` validates the question set; scores from live models are not recorded yet.

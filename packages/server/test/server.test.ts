@@ -71,6 +71,37 @@ describe('server', () => {
     expect(Object.keys(body.counts).sort()).toEqual(['high', 'low', 'medium']);
   });
 
+  it('cancels Ask when the browser closes the response', async () => {
+    let started!: () => void;
+    let stopped!: () => void;
+    const start = new Promise<void>((resolve) => { started = resolve; });
+    const stop = new Promise<void>((resolve) => { stopped = resolve; });
+    const asking = await startServer({
+      engine, host: '127.0.0.1', port: 0, token: TOKEN,
+      ai: { name: 'test', run: async ({ signal }) => {
+        const cancelled = new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+        started();
+        await cancelled;
+        stopped();
+        throw new Error('cancelled');
+      } },
+    });
+    const controller = new AbortController();
+    try {
+      const result = fetch(`${asking.url}/api/ask`, {
+        method: 'POST', headers: { 'x-eyrie-token': TOKEN, 'content-type': 'application/json' },
+        body: JSON.stringify({ question: 'What is on the map?' }), signal: controller.signal,
+      }).catch((error: unknown) => error);
+      await start;
+      controller.abort();
+      await expect(result).resolves.toMatchObject({ name: 'AbortError' });
+      await stop;
+    } finally {
+      controller.abort();
+      await asking.close();
+    }
+  });
+
   it('sends a hello message over WebSocket', async () => {
     const ws = new WebSocket(`${server.url.replace('http', 'ws')}/ws?token=${TOKEN}`);
     const msg = await new Promise<ServerMessage>((resolve, reject) => {
