@@ -46,7 +46,7 @@ Dependencies point one way: `core ← parser/graph/storage ← architecture ← 
 ## 2. Frontend
 
 - **Framework:** React 19, built with Vite 8 (Tailwind v4 via `@tailwindcss/vite`), served as static assets by the engine's own HTTP server.
-- **Layout:** `elkjs` computes the lane-ordered architecture layout. Layout is *stable*: existing components keep their order when the graph updates.
+- **Layout:** `elkjs` computes the lane-ordered architecture layout in a Web Worker. A layout is canceled when a newer one replaces it. If the worker fails or exceeds two seconds, Eyrie stacks components in their lanes and draws every link with simpler routing. Existing components keep their vertical order when the graph updates.
 - **2D renderer:** React Flow (`@xyflow/react`) with custom node and edge components, so node rendering and interaction stay under our control.
 - **3D view:** a full-canvas Three.js (WebGL) city; block height encodes lines of code. Without WebGL the view offers a switch back to 2D.
 - **Animation:** `animejs` for diff-driven motion (halos, pulses, block rise/sink, trace flow).
