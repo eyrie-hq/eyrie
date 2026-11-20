@@ -183,7 +183,7 @@ Three things share one **insight drawer** on the left of the map: press `A`, or 
 
 **Ask** — a plain-language question answered by a model that may only call Eyrie's read-only tools. It cannot read files. The answer comes back as numbered steps, each citing components; **a step citing anything the tools did not return is rejected rather than shown**, the same rule AI commit notes follow. Use **Answered by** to choose Claude Code, Codex, Muse or an OpenAI-compatible API. Choosing who answers lets you use Ask even if the server started without `--ai`. Every answer names the model that wrote it and lists the tool calls it made; *Replay path* walks the cited path on the map, and the cited components stay ringed with their step numbers.
 
-To use **Codex** in Ask on macOS, sign in to Codex as usual. On Windows, use the native `codex.exe` on `PATH` and a Windows build that supports [Microsoft Execution Containers (MXC)](https://learn.chatgpt.com/docs/windows/windows-sandbox#mxc-compatibility). Then open PowerShell and sign in to ChatGPT with Eyrie's dedicated Codex profile.
+**Codex** is available in Ask on macOS and Windows. On macOS, Ask uses your existing Codex sign-in. On Windows, use the native `codex.exe` on `PATH` and a Windows build that supports [Microsoft Execution Containers (MXC)](https://learn.chatgpt.com/docs/windows/windows-sandbox#mxc-compatibility). Then open PowerShell and sign in to ChatGPT with Eyrie's dedicated Codex profile.
 
 ```powershell
 $env:CODEX_HOME = Join-Path $env:LOCALAPPDATA 'Eyrie\codex-ask'
