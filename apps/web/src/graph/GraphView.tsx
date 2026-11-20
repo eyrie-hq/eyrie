@@ -25,7 +25,6 @@ function MapView() {
   const rendererRef = useRef<GraphRenderer | null>(null);
   const layoutRef = useRef<Layout | null>(null);
   const highlightRef = useRef<Highlight | null>(null);
-  const runRef = useRef(0);
 
   const { nodes, edges } = useLensGraph();
   const graphVersion = useStore((s) => s.graphVersion);
@@ -73,15 +72,16 @@ function MapView() {
   // Re-layout whenever the graph or the category filter changes.
   useEffect(() => {
     if (!store.get().loaded) return;
-    const run = ++runRef.current;
+    const controller = new AbortController();
+    const { signal } = controller;
     const visibleNodes = nodes.filter((n) => !hidden.has(n.category));
     const ids = new Set(visibleNodes.map((n) => n.id));
     const visibleEdges = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
     void (async () => {
       await document.fonts.ready;
-      const layout = await computeLayout(visibleNodes, visibleEdges, layoutRef.current ?? undefined);
+      const layout = await computeLayout(visibleNodes, visibleEdges, layoutRef.current ?? undefined, signal);
       const renderer = rendererRef.current;
-      if (run !== runRef.current || !renderer) return;
+      if (signal.aborted || !layout || !renderer) return;
       // The first non-empty layout appears without "new" animations and is fitted to the screen.
       const first = !layoutRef.current || layoutRef.current.nodes.size === 0;
       const switched = lensRef.current !== lens;
@@ -91,6 +91,7 @@ function MapView() {
       // A lens shows a different slice of the repo; frame it.
       if ((first || switched) && layout.nodes.size) renderer.fit(first ? 0 : 420);
     })();
+    return () => controller.abort();
   }, [graphVersion, nodes, edges, hidden, lens]);
 
   useEffect(() => rendererRef.current?.setMarks(shownMarks), [shownMarks]);

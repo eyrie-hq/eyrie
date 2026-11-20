@@ -1,5 +1,5 @@
-import type ELK from 'elkjs/lib/elk.bundled.js';
-import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
+import ELK, { type ElkExtendedEdge, type ElkNode } from 'elkjs/lib/elk-api.js';
+import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url';
 import { ARCH_LANES, type ArchEdge, type ArchLane, type ArchNode } from '@eyrie/core';
 
 export const NODE_W = 216;
@@ -35,16 +35,60 @@ export interface Layout {
   height: number;
 }
 
-let elk: Promise<InstanceType<typeof ELK>> | undefined;
-const getElk = () => elk ??= import('elkjs/lib/elk.bundled.js').then(({ default: ELK }) => new ELK());
 const laneIndex = (lane: ArchLane) => ARCH_LANES.indexOf(lane);
+const LAYOUT_TIMEOUT_MS = 2_000;
+
+async function layoutInWorker(graph: ElkNode, signal: AbortSignal): Promise<ElkNode> {
+  const worker = new Worker(elkWorkerUrl);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    return await new Promise<ElkNode>((resolve, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener('abort', onAbort, { once: true });
+      worker.addEventListener('error', reject, { once: true });
+      worker.addEventListener('messageerror', reject, { once: true });
+      timer = setTimeout(() => reject(new Error('Graph layout timed out')), LAYOUT_TIMEOUT_MS);
+      const elk = new ELK({ workerFactory: () => worker, algorithms: ['layered'] });
+      void elk.layout(graph).then(resolve, reject);
+    });
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+    worker.terminate();
+  }
+}
+
+/** Keep every component and link drawable when ELK cannot finish in time. */
+function laneLayout(graph: ElkNode): ElkNode {
+  const rows = new Map<number, number>();
+  const children = (graph.children ?? []).map((node) => {
+    const lane = Number(node.layoutOptions?.['elk.partitioning.partition']);
+    const row = rows.get(lane) ?? 0;
+    rows.set(lane, row + 1);
+    return { ...node, x: 40 + lane * (NODE_W + 96), y: 56 + row * (NODE_H + 24) };
+  });
+  const positions = new Map(children.map((node) => [node.id, node]));
+  const edges = (graph.edges ?? []).map((edge) => {
+    const source = positions.get(edge.sources[0]!)!;
+    const target = positions.get(edge.targets[0]!)!;
+    const forward = source.x <= target.x;
+    const startPoint = { x: source.x + (forward ? NODE_W : 0), y: source.y + NODE_H / 2 };
+    const endPoint = { x: target.x + (source.x >= target.x ? NODE_W : 0), y: target.y + NODE_H / 2 };
+    if (source === target) endPoint.y += NODE_H / 4;
+    const x = source.x === target.x ? startPoint.x + 24 : (startPoint.x + endPoint.x) / 2;
+    return { ...edge, sections: [{ id: edge.id, startPoint, endPoint, bendPoints: [{ x, y: startPoint.y }, { x, y: endPoint.y }] }] };
+  });
+  return { ...graph, children, edges };
+}
 
 /**
  * Layered left-to-right layout. Lanes are ELK partitions, so a request
  * always reads UI → Edge → API → Logic → Data → External. Nodes are fed in
  * a stable order (lane, then key) so small changes move few nodes.
  */
-export async function computeLayout(nodes: ArchNode[], edges: ArchEdge[], previous?: Layout): Promise<Layout> {
+export async function computeLayout(nodes: ArchNode[], edges: ArchEdge[], previous: Layout | undefined, signal: AbortSignal): Promise<Layout | null> {
+  if (signal.aborted) return null;
   // After the first layout, keep every lane's vertical order (the map must not
   // reshuffle on each save). New nodes slot in beside the nodes they connect to.
   const stable = !!previous && previous.nodes.size > 0;
@@ -96,7 +140,8 @@ export async function computeLayout(nodes: ArchNode[], edges: ArchEdge[], previo
       .map((e): ElkExtendedEdge => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
 
-  const out = await (await getElk()).layout(graph);
+  const out = await layoutInWorker(graph, signal).catch(() => signal.aborted ? null : laneLayout(graph));
+  if (!out || signal.aborted) return null;
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const placed = new Map<string, PlacedNode>();
   for (const c of out.children ?? []) placed.set(c.id, { node: byId.get(c.id)!, x: c.x ?? 0, y: c.y ?? 0 });

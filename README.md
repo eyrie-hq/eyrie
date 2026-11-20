@@ -387,6 +387,7 @@ To open files from the UI, Eyrie looks for `cursor`, `code`, `windsurf` or `zed`
 - Architecture classification is heuristic. It is tuned most for Next.js and Node.js apps, then for the frameworks listed above; other layouts may need rules. Add a doc comment (or a Python docstring) to a component's main export to set its description.
 - Express router prefixes (`app.use('/api', router)`) are not joined to the routes registered on the router yet.
 - Parsing is single-threaded; very large repositories take a while on first run (later runs use the cache).
+- If a map's detailed layout takes more than two seconds, Eyrie uses a simpler layout with the same components and links. The map controls stay available while the layout is calculated.
 - C and C++: system headers (`#include <…>`) are not followed into the project, and C++20 modules (`export module` / `import x;`) are not parsed.
 - Objective-C: only `.m` files are parsed (`.h` stays with C++, `.mm` is skipped), so interfaces declared only in headers are not followed.
 - Vue: only `<script>` blocks and template component tags are read; directives, `v-for` and `<style>` are ignored.
