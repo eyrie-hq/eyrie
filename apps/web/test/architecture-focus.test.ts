@@ -1,7 +1,10 @@
 import type { ArchEdge, ArchNode } from '@eyrie/core';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { focusSet, visibleMap } from '../src/graph/analysis';
 import { countLanes, withLaneTotals, type Layout } from '../src/graph/layout';
+import { store } from '../src/state/store';
+
+vi.mock('../src/lib/desktop', () => ({ desktop: undefined }));
 
 const page: ArchNode = { id: 'page', key: 'page', kind: 'page', category: 'frontend', lane: 'ui', label: 'Page', members: [], files: [] };
 const service: ArchNode = { id: 'service', key: 'service', kind: 'service', category: 'service', lane: 'logic', label: 'Service', members: [], files: [] };
@@ -39,4 +42,27 @@ it('keeps all lane headers and routes edges to the shifted nodes across empty la
   expect(result.nodes.get('service')?.x).toBeGreaterThan(320);
   expect(result.edges.get(edge.id)?.points).toEqual([{ x: 256, y: 90 }, { x: result.nodes.get('service')!.x, y: 90 }]);
   expect(layout.nodes.get('service')?.x).toBe(320);
+});
+
+it('filters to Ask citations and lets a node selection take over without turning off the filter', () => {
+  const originalState = store.get();
+  const callsService = link('page', 'service');
+  const callsData = link('service', 'data');
+  const graph = { nodes: [page, service, data, other], edges: [callsService, callsData] };
+  try {
+    store.select(page.id);
+    store.toggleShowOnlyHighlighted();
+    store.setHighlight({ source: 'ask', ids: [service.id, data.id] });
+    expect(store.get()).toMatchObject({ followAskHighlight: true, showOnlyHighlighted: true, selected: page.id });
+    expect(visibleMap(graph, new Set(), { nodes: new Set(store.get().highlight?.ids) })).toEqual({ nodes: [service, data], edges: [callsData] });
+
+    store.select(service.id);
+    expect(store.get()).toMatchObject({ followAskHighlight: false, showOnlyHighlighted: true, selected: service.id });
+    store.setHighlight({ source: 'ask', ids: [data.id] });
+    expect(store.get().followAskHighlight).toBe(true);
+    store.clearHighlight();
+    expect(store.get().followAskHighlight).toBe(false);
+  } finally {
+    store.set(originalState);
+  }
 });

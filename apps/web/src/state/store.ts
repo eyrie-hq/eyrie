@@ -84,6 +84,8 @@ export interface State {
   selected: string | null;
   focus: FocusMode;
   showOnlyHighlighted: boolean;
+  /** Ask set the highlights since the last component or Trace mode selection. */
+  followAskHighlight: boolean;
   hoverFrame: number | null;
   query: string;
   hidden: Set<ArchCategory>;
@@ -128,6 +130,7 @@ class Store {
     selected: null,
     focus: 'neighbors',
     showOnlyHighlighted: false,
+    followAskHighlight: false,
     hoverFrame: null,
     query: '',
     hidden: new Set(),
@@ -170,10 +173,11 @@ class Store {
     this.set({
       selected: id,
       focus: id === this.state.selected ? this.state.focus : 'neighbors',
+      followAskHighlight: false,
       reveal: reveal && id ? { id, n: (this.state.reveal?.n ?? 0) + 1 } : this.state.reveal,
     });
   };
-  setFocus = (focus: FocusMode) => this.set({ focus });
+  setFocus = (focus: FocusMode) => this.set({ focus, followAskHighlight: false });
   toggleShowOnlyHighlighted = () => this.set({ showOnlyHighlighted: !this.state.showOnlyHighlighted });
   setView = (view: ViewMode) => {
     writePref(VIEW_KEY, view);
@@ -197,10 +201,10 @@ class Store {
   setQuery = (query: string) => this.set({ query });
   setHoverFrame = (hoverFrame: number | null) => this.set({ hoverFrame });
   setHighlight = (highlight: InsightHighlight | null) => {
-    if (this.state.highlight !== highlight) this.set({ highlight });
+    if (this.state.highlight !== highlight) this.set({ highlight, followAskHighlight: highlight?.source === 'ask' });
   };
   clearHighlight = () => {
-    if (this.state.highlight) this.set({ highlight: null });
+    this.setHighlight(null);
   };
   openDrawer = (tab: DrawerTab) => this.set({ drawer: { open: true, tab } });
   openDrawerSelection = (tab: DrawerTab, id: string) => this.set({ drawer: { open: true, tab }, drawerSelection: { tab, id } });

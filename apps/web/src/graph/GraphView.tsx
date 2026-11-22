@@ -41,6 +41,8 @@ function MapView() {
   const selected = useStore((s) => s.selected);
   const focusMode = useStore((s) => s.focus);
   const showOnlyHighlighted = useStore((s) => s.showOnlyHighlighted) && lens === 'architecture';
+  const followAskHighlight = useStore((s) => s.followAskHighlight);
+  const insight = useStore((s) => s.highlight);
   const query = useStore((s) => s.query);
   const hoverFrame = useStore((s) => s.hoverFrame);
   const frames = useStore((s) => s.frames);
@@ -48,10 +50,15 @@ function MapView() {
   const view = useStore((s) => s.view);
   const focus = useMemo(() => (selected && nodes.some((n) => n.id === selected) ? focusSet(edges, selected, focusMode) : null), [selected, focusMode, edges, nodes]);
   const fullMap = useMemo(() => visibleMap({ nodes, edges }, hidden), [nodes, edges, hidden]);
-  const restricted = showOnlyHighlighted && fullMap.nodes.some((node) => node.id === selected) ? focus : null;
+  const askFocus = useMemo(() => {
+    if (!showOnlyHighlighted || insight?.source !== 'ask' || (!followAskHighlight && selected)) return null;
+    return { nodes: new Set([...insight.ids, ...(insight.path ?? [])]) };
+  }, [showOnlyHighlighted, insight, followAskHighlight, selected]);
+  const traceFocus = showOnlyHighlighted && fullMap.nodes.some((node) => node.id === selected) ? focus : null;
+  const restricted = askFocus ?? traceFocus;
   const map = useMemo(() => restricted ? visibleMap({ nodes, edges }, hidden, restricted) : fullMap, [nodes, edges, hidden, fullMap, restricted]);
-  const scope = restricted ? `${selected}:${focusMode}` : null;
-  const anchor = restricted ? selected : null;
+  const scope = askFocus ? `ask:${[...askFocus.nodes].join(':')}` : traceFocus ? `${selected}:${focusMode}` : null;
+  const anchor = traceFocus && !askFocus ? selected : null;
   const laneTotals = useMemo(() => showOnlyHighlighted ? countLanes(nodes) : null, [showOnlyHighlighted, nodes]);
   // In the System view a box shows the changes of the components inside it.
   const shownMarks = useMemo(() => (lens === 'system' ? boxMarks(marks, nodes) : marks), [lens, marks, nodes]);
@@ -138,7 +145,6 @@ function MapView() {
     const ids = [...f.touched, ...f.added.map((a) => a.id)];
     return lens === 'system' ? boxIds(ids, nodes) : new Set(ids);
   }, [hoverFrame, frames, lens, nodes]);
-  const insight = useStore((s) => s.highlight);
   const insightSet = useMemo(() => {
     if (!insight?.ids.length) return null;
     // In the System view a box lights up when a component inside it is cited.
@@ -159,10 +165,10 @@ function MapView() {
   }, [insight, lens, nodes, components]);
 
   useEffect(() => {
-    const hl: Highlight = { selected, focus, flow: focusMode !== 'neighbors', matches: matchSet, frame: frameSet, insight: insightSet };
+    const hl: Highlight = { selected, focus: askFocus ? null : focus, flow: focusMode !== 'neighbors', matches: matchSet, frame: frameSet, insight: insightSet };
     highlightRef.current = hl;
     rendererRef.current?.setHighlight(hl);
-  }, [selected, focus, focusMode, matchSet, frameSet, insightSet, graphVersion, view]);
+  }, [selected, focus, askFocus, focusMode, matchSet, frameSet, insightSet, graphVersion, view]);
 
   useEffect(() => {
     if (reveal) rendererRef.current?.reveal(reveal.id);

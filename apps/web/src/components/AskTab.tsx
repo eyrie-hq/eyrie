@@ -134,8 +134,8 @@ export function AskTab() {
     const from = cited[0]!;
     const to = cited[cited.length - 1]!;
     const path = archPath([...edges.values()], from, to)?.nodes ?? cited;
-    showSteps(current.question, steps, path);
     store.select(from, true);
+    showSteps(current.question, steps, path);
   };
 
   const copy = async (record: AskRecordView) => {
