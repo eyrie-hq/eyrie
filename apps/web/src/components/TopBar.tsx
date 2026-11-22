@@ -56,7 +56,12 @@ export function TopBar() {
           ) : null}
           {repo?.frameworks.length ? <span className="navbar-frameworks">{repo.frameworks.join(' · ')}</span> : null}
         </div>
-        <Filters present={present} />
+        {lens === 'architecture' ? (
+          <div className="navbar-filter-tools">
+            <Filters present={present} />
+            <HighlightFilter />
+          </div>
+        ) : <Filters present={present} />}
       </div>
     </header>
   );
@@ -220,6 +225,21 @@ function Filters({ present }: { present: { cat: ArchCategory; count: number }[] 
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function HighlightFilter() {
+  const active = useStore((s) => s.showOnlyHighlighted);
+  const label = 'Show only highlighted';
+  return (
+    <div className="navbar-highlight">
+      <button type="button" className="navbar-highlight-button" aria-label={label} aria-pressed={active} onClick={store.toggleShowOnlyHighlighted}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3M8 12h8m-4-4v8" />
+        </svg>
+      </button>
+      <span className="navbar-highlight-hint" aria-hidden="true">{label}</span>
     </div>
   );
 }

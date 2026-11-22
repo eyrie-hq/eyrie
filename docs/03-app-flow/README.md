@@ -124,6 +124,8 @@ Start engine → map renders (System lens on a first visit)
 │    ├── source location + code preview → Open in editor
 │    ├── Calls / Used by → click to walk the graph
 │    └── Symbols inside
+├── Architecture: enable Show only highlighted in the toolbar
+│    └── select another component → the map and visible / total lane counts update
 └── press 3 (Sequence) → pick an entry point → read the call order,
      click any message to open the exact line
 ```

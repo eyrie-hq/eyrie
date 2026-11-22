@@ -1,11 +1,13 @@
 import { Box, Map as MapIcon, Maximize2, Minus, Plus, RotateCcw, RotateCw, Scan } from 'lucide-react';
+import type { Viewport } from '@xyflow/react';
+import type { ArchGraph } from '@eyrie/core';
 import { useEffect, useMemo, useRef } from 'react';
 import { SequenceView } from './SequenceView';
 import { store, useStore, type Lens, type ViewMode } from '../state/store';
 import { systemIdOf } from '@eyrie/lens';
-import { focusSet, matches } from './analysis';
+import { focusSet, matches, visibleMap } from './analysis';
 import { FlowCanvas } from './FlowCanvas';
-import { computeLayout, type Layout } from './layout';
+import { computeLayout, countLanes, withLaneTotals, type Layout } from './layout';
 import type { CityRenderer, GraphRenderer, Highlight } from './renderer';
 import { boxIds, boxMarks, useLensGraph } from './useLensGraph';
 
@@ -26,6 +28,9 @@ function MapView() {
   const layoutRef = useRef<Layout | null>(null);
   const highlightRef = useRef<Highlight | null>(null);
   const runRef = useRef(0);
+  const fullArchitecture = useRef<{ graph: ArchGraph; layout: Layout } | null>(null);
+  const fullViewport = useRef<{ view: ViewMode; viewport: Viewport } | null>(null);
+  const displayedScope = useRef<string | null>(null);
 
   const { nodes, edges } = useLensGraph();
   const graphVersion = useStore((s) => s.graphVersion);
@@ -35,11 +40,19 @@ function MapView() {
   const marks = useStore((s) => s.marks);
   const selected = useStore((s) => s.selected);
   const focusMode = useStore((s) => s.focus);
+  const showOnlyHighlighted = useStore((s) => s.showOnlyHighlighted) && lens === 'architecture';
   const query = useStore((s) => s.query);
   const hoverFrame = useStore((s) => s.hoverFrame);
   const frames = useStore((s) => s.frames);
   const reveal = useStore((s) => s.reveal);
   const view = useStore((s) => s.view);
+  const focus = useMemo(() => (selected && nodes.some((n) => n.id === selected) ? focusSet(edges, selected, focusMode) : null), [selected, focusMode, edges, nodes]);
+  const fullMap = useMemo(() => visibleMap({ nodes, edges }, hidden), [nodes, edges, hidden]);
+  const restricted = showOnlyHighlighted && fullMap.nodes.some((node) => node.id === selected) ? focus : null;
+  const map = useMemo(() => restricted ? visibleMap({ nodes, edges }, hidden, restricted) : fullMap, [nodes, edges, hidden, fullMap, restricted]);
+  const scope = restricted ? `${selected}:${focusMode}` : null;
+  const anchor = restricted ? selected : null;
+  const laneTotals = useMemo(() => showOnlyHighlighted ? countLanes(nodes) : null, [showOnlyHighlighted, nodes]);
   // In the System view a box shows the changes of the components inside it.
   const shownMarks = useMemo(() => (lens === 'system' ? boxMarks(marks, nodes) : marks), [lens, marks, nodes]);
   const marksRef = useRef(shownMarks);
@@ -70,32 +83,47 @@ function MapView() {
     };
   }, [view]);
 
-  // Re-layout whenever the graph or the category filter changes.
+  // Re-layout whenever the visible graph changes.
   useEffect(() => {
     if (!store.get().loaded) return;
     const run = ++runRef.current;
-    const visibleNodes = nodes.filter((n) => !hidden.has(n.category));
-    const ids = new Set(visibleNodes.map((n) => n.id));
-    const visibleEdges = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
     void (async () => {
       await document.fonts.ready;
-      const layout = await computeLayout(visibleNodes, visibleEdges, layoutRef.current ?? undefined);
+      if (run !== runRef.current) return;
+      const cached = lens === 'architecture' ? fullArchitecture.current : null;
+      const base = cached?.graph === map ? cached.layout : await computeLayout(map.nodes, map.edges, cached?.layout ?? layoutRef.current ?? undefined);
       const renderer = rendererRef.current;
       if (run !== runRef.current || !renderer) return;
+      if (lens === 'architecture' && !scope) fullArchitecture.current = { graph: map, layout: base };
+      const layout = laneTotals ? withLaneTotals(base, laneTotals) : base;
       // The first non-empty layout appears without "new" animations and is fitted to the screen.
       const first = !layoutRef.current || layoutRef.current.nodes.size === 0;
       const switched = lensRef.current !== lens;
+      const wasFocused = displayedScope.current !== null;
+      const scopeChanged = displayedScope.current !== scope;
+      const currentView = store.get().view;
+      if (switched) fullViewport.current = null;
+      if (scope && !wasFocused && !first && !switched) {
+        const viewport = renderer.getViewport();
+        if (viewport) fullViewport.current = { view: currentView, viewport };
+      }
+      displayedScope.current = scope;
       lensRef.current = lens;
       layoutRef.current = layout;
-      renderer.render(layout, marksRef.current, { animate: !first });
-      // A lens shows a different slice of the repo; frame it.
-      if ((first || switched) && layout.nodes.size) renderer.fit(first ? 0 : 420);
+      renderer.render(layout, marksRef.current, { animate: !first && !scopeChanged });
+      if (!scope && wasFocused && fullViewport.current?.view === currentView) {
+        renderer.setViewport(fullViewport.current.viewport);
+        fullViewport.current = null;
+      } else if ((first || switched || scopeChanged) && layout.nodes.size) {
+        renderer.fit(scopeChanged || first ? 0 : 420);
+        if (anchor) renderer.ensureVisible(anchor);
+      }
     })();
-  }, [graphVersion, nodes, edges, hidden, lens]);
+    return () => { runRef.current++; };
+  }, [graphVersion, map, lens, laneTotals, scope, anchor]);
 
   useEffect(() => rendererRef.current?.setMarks(shownMarks), [shownMarks]);
 
-  const focus = useMemo(() => (selected && nodes.some((n) => n.id === selected) ? focusSet(edges, selected, focusMode) : null), [selected, focusMode, edges, nodes]);
   const components = useStore((s) => s.nodes);
   const matchSet = useMemo(() => {
     if (!query.trim()) return null;

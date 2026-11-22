@@ -83,6 +83,7 @@ export interface State {
   frames: ChangeFrame[];
   selected: string | null;
   focus: FocusMode;
+  showOnlyHighlighted: boolean;
   hoverFrame: number | null;
   query: string;
   hidden: Set<ArchCategory>;
@@ -126,6 +127,7 @@ class Store {
     frames: [],
     selected: null,
     focus: 'neighbors',
+    showOnlyHighlighted: false,
     hoverFrame: null,
     query: '',
     hidden: new Set(),
@@ -172,6 +174,7 @@ class Store {
     });
   };
   setFocus = (focus: FocusMode) => this.set({ focus });
+  toggleShowOnlyHighlighted = () => this.set({ showOnlyHighlighted: !this.state.showOnlyHighlighted });
   setView = (view: ViewMode) => {
     writePref(VIEW_KEY, view);
     this.set({ view });
