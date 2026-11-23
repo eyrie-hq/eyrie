@@ -25,14 +25,14 @@ function isSidecar(name: string): boolean {
   return /^\.env(\..+)?$/.test(name) || name.endsWith('.sql') || name === 'firestore.rules' || name === 'storage.rules' || name === 'database.rules.json';
 }
 
-/** Files the engine never indexes but the rules read as text. Ignore rules do not apply: an ignored .env is still worth reporting when tracked. */
-function findSidecars(root: string): string[] {
+/** SQL follows the index's ignore rules. An ignored .env can still be reported when tracked. */
+function findSidecars(engine: GraphEngine): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     if (out.length >= MAX_SIDECARS) return;
     let entries;
     try {
-      entries = readdirSync(join(root, dir), { withFileTypes: true });
+      entries = readdirSync(join(engine.root, dir), { withFileTypes: true });
     } catch {
       return;
     }
@@ -41,6 +41,7 @@ function findSidecars(root: string): string[] {
       if (entry.isDirectory()) {
         if (!DEFAULT_IGNORED_DIRS.has(entry.name) && entry.name !== '.git') walk(rel);
       } else if (entry.isFile() && isSidecar(entry.name)) {
+        if (entry.name.endsWith('.sql') && engine.isIgnored(rel)) continue;
         out.push(rel);
       }
       if (out.length >= MAX_SIDECARS) return;
@@ -65,7 +66,7 @@ export async function runHealthCheck(engine: GraphEngine, opts: { onlyFiles?: st
     files.push({ path, facts: engine.index.getFacts(path), ignored: engine.isIgnored(path), tracked: false });
   }
   const seen = new Set(files.map((f) => f.path));
-  for (const rel of findSidecars(engine.root)) {
+  for (const rel of findSidecars(engine)) {
     if (seen.has(rel)) continue;
     const text = readSidecar(engine.root, rel);
     if (text === null) continue;

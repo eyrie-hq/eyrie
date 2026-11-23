@@ -196,6 +196,8 @@ Three things share one **insight drawer** on the left of the map: press `A`, or 
 | **Server env read in UI code** | medium | UI-lane code reads a server-only environment variable |
 | **Webhook without verification** | high | A webhook handler never reaches a signature-verification call, so anyone can forge its events |
 
+Health honors `.gitignore` and `.eyrieignore` when selecting SQL migrations to check. Tracked `.env` files can still generate findings even when ignored.
+
 The three in bold are what a file-by-file scanner cannot express: they are paths through the architecture graph. Severity is always a word as well as a colour. Each finding carries the path it was found on, a `!` badge on its components, *Show on map*, and *Copy fix prompt* — the prompt to hand to whichever agent will fix it. The facts behind the rules (environment reads, auth guards, webhook verification, secret-shaped literals) are extracted per file alongside everything else; a secret-shaped literal is recorded as a location and the pattern that matched, never the value.
 
 **Recent** — what an agent has been doing. When an agent calls `record_intent`, Eyrie opens a session: the task in its own words, which agent, and the window it covers. The components it changed in that window are listed with `+` (new) or `~` (changed), optionally each with a grounded note on how the change serves the task, and the session links to its commit once one lands, through the `Co-Authored-By` trailer. The live session's saves sit on a shaded band on the change tape.

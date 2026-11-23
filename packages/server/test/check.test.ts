@@ -8,7 +8,7 @@
  * safe placeholder variant.
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,7 @@ const SAFE_PREFIXES = ['src/routes/safe-', 'src/ui/SafePanel', 'src/leak-safe.ts
 function fixtureRepo(dir: string): string {
   const root = join(dir, 'unsafe');
   cpSync(FIXTURE, root, { recursive: true });
+  writeFileSync(join(root, '.eyrieignore'), '.env\n');
   writeFileSync(
     join(root, 'src/leak.ts'),
     ['/** A committed secret: the planted hardcoded-secret case. */', `export const awsKey = "${AWS_KEY}";`, `export const apiKey = "${ASSIGNED}";`, ''].join('\n'),
@@ -79,13 +80,19 @@ describe('health check on unsafe-app', () => {
       { path: 'src/leak.ts', line: 3 },
     ]);
     expect(byRule('public-env-secret').map((f) => f.files[0])).toEqual([{ path: 'src/config.ts', line: 5 }]);
-    expect(byRule('env-file-exposed').map((f) => f.files[0])).toEqual([{ path: '.env' }]);
     expect(byRule('supabase-no-rls').map((f) => f.files[0])).toEqual([{ path: 'supabase/migrations/0001_profiles.sql', line: 1 }]);
     expect(byRule('firebase-test-mode').map((f) => f.files[0])).toEqual([{ path: 'firestore.rules', line: 5 }]);
     expect(byRule('unguarded-write').map((f) => f.evidence)).toHaveLength(1);
     expect(byRule('unguarded-write')[0]!.evidence).toContain('/api/notes');
     expect(byRule('client-env-leak').map((f) => f.files[0])).toEqual([{ path: 'src/ui/LeakPanel.tsx', line: 3 }]);
     expect(byRule('unverified-webhook').map((f) => f.files[0])).toEqual([{ path: 'src/routes/webhook.ts', line: 6 }]);
+  });
+
+  it('flags a tracked .env even when Eyrie ignores it', () => {
+    expect(engine.isIgnored('.env')).toBe(true);
+    const exposed = summary.findings.filter((f) => f.rule === 'env-file-exposed');
+    expect(exposed.map((f) => f.files[0])).toEqual([{ path: '.env' }]);
+    expect(exposed[0]!.evidence).toContain('tracked by git');
   });
 
   it('flags no safe variant', () => {
@@ -112,4 +119,35 @@ describe('health check on unsafe-app', () => {
       expect(finding.files.some((f) => f.path === 'src/routes/notes.ts')).toBe(true);
     }
   });
+});
+
+it('excludes ignored SQL before applying the sidecar limit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'eyrie-check-'));
+  const root = join(dir, 'repo');
+  const engine = new GraphEngine({ root, dataDir: join(dir, 'data'), watch: false });
+  const sql = 'create table items (id integer primary key);\n';
+
+  try {
+    mkdirSync(join(root, 'archive/migrations'), { recursive: true });
+    mkdirSync(join(root, 'migrations'), { recursive: true });
+    writeFileSync(join(root, '.eyrieignore'), '/archive/\n');
+    writeFileSync(join(root, 'migrations/.eyrieignore'), 'ignored.sql\n');
+    writeFileSync(join(root, 'migrations/ignored.sql'), sql);
+    writeFileSync(join(root, 'migrations/001.sql'), sql);
+    // The archived copies would fill the entire sidecar budget on their own.
+    for (let i = 1; i <= 100; i++) {
+      const name = `${String(i).padStart(3, '0')}.sql`;
+      writeFileSync(join(root, 'archive/migrations', name), sql);
+    }
+
+    await engine.start();
+    const summary = await runHealthCheck(engine);
+    expect(summary.filesChecked).toBe(1);
+    expect(summary.findings.map(({ rule, files }) => ({ rule, files }))).toEqual([
+      { rule: 'supabase-no-rls', files: [{ path: 'migrations/001.sql', line: 1 }] },
+    ]);
+  } finally {
+    await engine.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
