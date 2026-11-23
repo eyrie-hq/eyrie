@@ -54,7 +54,6 @@ export function findingChain(finding: FindingView): string[] {
 export function showFinding(finding: FindingView, nodes: Map<string, ArchNode>): void {
   const chain = findingChain(finding).filter((id) => nodes.has(id));
   const ids = chain.length ? chain : finding.componentIds.filter((id) => nodes.has(id));
-  if (!ids.length) return;
   const labels: Record<string, string> = {};
   for (const id of ids) labels[id] = '!';
   store.setHighlight({ source: 'health', ids, labels, path: chain.length > 1 ? chain : undefined, description: finding.title });
@@ -63,7 +62,6 @@ export function showFinding(finding: FindingView, nodes: Map<string, ArchNode>):
 /** Every finding's components get a `!` badge; nothing is ringed yet. */
 export function showAllFindings(findings: FindingView[], nodes: Map<string, ArchNode>): void {
   const ids = [...new Set(findings.flatMap((f) => f.componentIds))].filter((id) => nodes.has(id));
-  if (!ids.length) return;
   const labels: Record<string, string> = {};
   for (const id of ids) labels[id] = '!';
   store.setHighlight({ source: 'health', ids, labels, description: `${findings.length} findings` });

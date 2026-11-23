@@ -68,7 +68,6 @@ export function sessionMarks(session: SessionView): Map<string, string> {
 export function showSession(session: SessionView, nodes: Map<string, ArchNode>): void {
   const marks = sessionMarks(session);
   const ids = [...marks.keys()].filter((id) => nodes.has(id));
-  if (!ids.length) return;
   const labels: Record<string, string> = {};
   for (const id of ids) labels[id] = marks.get(id)!;
   store.setHighlight({ source: 'recent', ids, labels, path: ids.length > 1 ? ids : undefined, description: session.task });

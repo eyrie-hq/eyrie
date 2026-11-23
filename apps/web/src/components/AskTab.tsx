@@ -74,8 +74,7 @@ export function AskTab() {
 
   // The open answer points at the map; leaving the tab takes it down, unless another tab points by then.
   useEffect(() => {
-    const steps = current?.answer?.steps;
-    if (current && steps?.length) showSteps(current.question, steps);
+    if (current) showSteps(current.question, current.answer?.steps ?? []);
     return () => {
       if (store.get().highlight?.source === 'ask') store.clearHighlight();
     };
@@ -95,7 +94,7 @@ export function AskTab() {
         }
       }
     });
-    if (ids.length) store.setHighlight({ source: 'ask', ids, labels, path, description: `Answer to "${question}"` });
+    store.setHighlight({ source: 'ask', ids, labels, path, description: `Answer to "${question}"` });
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -131,11 +130,15 @@ export function AskTab() {
     const steps = current?.answer?.steps;
     if (!current || !steps?.length) return;
     const cited = steps.flatMap((s) => s.componentIds).filter((id) => nodes.has(id));
-    const from = cited[0]!;
+    const from = cited[0];
+    if (!from) {
+      store.clearHighlight();
+      return;
+    }
     const to = cited[cited.length - 1]!;
     const path = archPath([...edges.values()], from, to)?.nodes ?? cited;
-    showSteps(current.question, steps, path);
     store.select(from, true);
+    showSteps(current.question, steps, path);
   };
 
   const copy = async (record: AskRecordView) => {

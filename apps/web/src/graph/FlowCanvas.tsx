@@ -9,7 +9,7 @@ import type { ArchNode } from '@eyrie/core';
 import type { Mark } from '../state/store';
 import { focusSet } from './analysis';
 import { reducedMotion, sendParticle, startFlow } from './effects';
-import { NODE_H, NODE_W, pointAlong, roundedPath, type Layout, type PlacedNode, type Point } from './layout';
+import { countLanes, NODE_H, NODE_W, pointAlong, roundedPath, type Layout, type PlacedNode, type Point } from './layout';
 import type { CityRenderer, Highlight, RendererCallbacks } from './renderer';
 import type { CityScene } from '../graph3d/CityScene';
 import { CITY_LABEL_H, CITY_LABEL_W, HOME_ANGLE, cityLabelMatrix, projectCity, projectPoint, orientCamera, type CityAngle } from '../graph3d/projection';
@@ -172,6 +172,8 @@ export const FlowCanvas = forwardRef<CityRenderer, RendererCallbacks & { city?: 
         setHighlight(next);
       },
       fit,
+      getViewport() { return instance.current?.getViewport() ?? null; },
+      setViewport(viewport) { camera((api) => { void api.setViewport(viewport, { duration: 0 }); }); },
       zoomBy(factor) { camera((api) => { void api.zoomTo(api.getZoom() * factor, { duration: duration(180) }); }); },
       reveal(id) { reveal(id, true); },
       ensureVisible(id) { reveal(id, false); },
@@ -328,15 +330,21 @@ function CityLanes({ layout, origin, angle }: { layout: Layout | null; origin: P
   if (!layout) return null;
   const camera = new OrthographicCamera();
   orientCamera(camera, angle);
+  const counts = countLanes([...layout.nodes.values()].map(({ node }) => node));
   return <>{layout.lanes.map((lane) => {
     const point = projectPoint(camera, { x: (lane.x0 + lane.x1) / 2, y: layout.height + 20 }, 0, origin);
-    const count = [...layout.nodes.values()].filter((p) => p.node.lane === lane.lane).length;
-    return <span className="city-lane-label" key={lane.lane} style={{ left: point.x, top: point.y }}>{LANE_LABEL[lane.lane]}<b>{count}</b></span>;
+    return <span className="city-lane-label" key={lane.lane} style={{ left: point.x, top: point.y }}>{LANE_LABEL[lane.lane]}<b>{laneCount(layout, counts, lane.lane)}</b></span>;
   })}</>;
+}
+
+function laneCount(layout: Layout, counts: ReturnType<typeof countLanes>, lane: Layout['lanes'][number]['lane']) {
+  const visible = counts.get(lane) ?? 0;
+  return layout.laneTotals ? `${visible} / ${layout.laneTotals.get(lane) ?? 0}` : String(visible);
 }
 
 function LaneRuler({ layout, marks }: { layout: Layout; marks: Map<string, Mark> }) {
   const viewport = useViewport();
+  const counts = useMemo(() => countLanes([...layout.nodes.values()].map(({ node }) => node)), [layout.nodes]);
   const ruler = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -349,26 +357,26 @@ function LaneRuler({ layout, marks }: { layout: Layout; marks: Map<string, Mark>
   const left = lanes.filter((lane) => lane.right < 36).at(-1);
   const right = lanes.find((lane) => lane.left > width - 36);
   const changed = (name: string) => marks.get([...layout.nodes.values()].find((p) => p.node.lane === name && marks.has(p.node.id))?.node.id ?? '');
+  const count = (lane: Layout['lanes'][number]['lane']) => laneCount(layout, counts, lane);
   return (
     <nav ref={ruler} className="flow-ruler" aria-label="Architecture lanes">
-      {left ? <LaneJump lane={left} viewport={viewport} width={width} side="left" changed={changed(left.lane)} /> : null}
+      {left ? <LaneJump lane={left} viewport={viewport} width={width} side="left" changed={changed(left.lane)} count={layout.laneTotals ? count(left.lane) : undefined} /> : null}
       {lanes.filter((lane) => lane.right >= 36 && lane.left <= width - 36).map((lane) => {
         const x = Math.max(left ? 112 : 0, lane.left);
         const available = Math.min(right ? width - 112 : width, lane.right) - x;
         if (available < 64) return null;
-        const count = [...layout.nodes.values()].filter((p) => p.node.lane === lane.lane).length;
-        return <span key={lane.lane} className="flow-lane-label" style={{ left: x + 14, width: available - 20 }}>{LANE_LABEL[lane.lane]}<b>{count}</b></span>;
+        return <span key={lane.lane} className="flow-lane-label" style={{ left: x + 14, width: available - 20 }}>{LANE_LABEL[lane.lane]}<b>{count(lane.lane)}</b></span>;
       })}
-      {right ? <LaneJump lane={right} viewport={viewport} width={width} side="right" changed={changed(right.lane)} /> : null}
+      {right ? <LaneJump lane={right} viewport={viewport} width={width} side="right" changed={changed(right.lane)} count={layout.laneTotals ? count(right.lane) : undefined} /> : null}
     </nav>
   );
 }
 
-function LaneJump({ lane, viewport, width, side, changed }: { lane: Layout['lanes'][number]; viewport: { x: number; y: number; zoom: number }; width: number; side: 'left' | 'right'; changed?: Mark }) {
+function LaneJump({ lane, viewport, width, side, changed, count }: { lane: Layout['lanes'][number]; viewport: { x: number; y: number; zoom: number }; width: number; side: 'left' | 'right'; changed?: Mark; count?: string }) {
   const api = useReactFlow<ComponentNode, DependencyEdge>();
   const Icon = side === 'left' ? ArrowLeft : ArrowRight;
   // A lane jump preserves vertical orientation and zoom.
   return <button type="button" className={`flow-lane-jump ${side}`} title={`Reveal ${LANE_LABEL[lane.lane]} lane`} aria-label={`Reveal ${LANE_LABEL[lane.lane]} lane`} onClick={() => void api.setViewport({ x: width / 2 - (lane.x0 + lane.x1) / 2 * viewport.zoom, y: viewport.y, zoom: viewport.zoom }, { duration: reducedMotion() ? 0 : 320 })}>
-    <Icon size={13} aria-hidden="true" /><span>{LANE_LABEL[lane.lane]}</span>{changed ? <span className={`flow-lane-change ${changed}`} aria-label={`Contains ${changed} components`}>{GLYPH[changed]}</span> : null}
+    <Icon size={13} aria-hidden="true" /><span>{LANE_LABEL[lane.lane]}{count ? ` ${count}` : ''}</span>{changed ? <span className={`flow-lane-change ${changed}`} aria-label={`Contains ${changed} components`}>{GLYPH[changed]}</span> : null}
   </button>;
 }

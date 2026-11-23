@@ -1,3 +1,4 @@
+import type { Viewport } from '@xyflow/react';
 import type { Mark } from '../state/store';
 import type { Focus } from './analysis';
 import type { Layout } from './layout';
@@ -24,6 +25,8 @@ export interface GraphRenderer {
   setMarks(marks: Map<string, Mark>): void;
   setHighlight(hl: Highlight): void;
   fit(duration?: number): void;
+  getViewport(): Viewport | null;
+  setViewport(viewport: Viewport): void;
   zoomBy(factor: number): void;
   reveal(id: string): void;
   ensureVisible(id: string): void;

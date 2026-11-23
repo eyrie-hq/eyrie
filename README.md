@@ -202,6 +202,8 @@ The three in bold are what a file-by-file scanner cannot express: they are paths
 
 Selecting a component also shows its findings and what changed in this session in the details panel; both link back to the matching row in the drawer.
 
+Opening a drawer item with no linked components on the current map clears the previous drawer highlight.
+
 ## Supported languages
 
 | Language | Files | Imports resolved through |
@@ -234,6 +236,7 @@ Generated code is skipped (`*.pb.go`, `*_pb2.py`, `*.Designer.cs`, `*.d.ts`), an
 - **Lanes.** Components are arranged left to right in the order a request travels: UI → Edge (middleware) → API → Logic → Data → External. A ruler at the top names the lanes and points to lanes that are off-screen.
 - **Colors carry meaning.** Blue frontend, green API, orange services, purple AI, cyan data, yellow external services, grey utilities. A missing API route (frontend calls `/api/x` and nothing serves it) is drawn in red.
 - **Links.** Solid lines are calls, dashed lines are HTTP requests (they cross a network boundary), cyan lines read or write data.
+- **Show only highlighted.** In Architecture, use the reticle beside the category filters to show the selected component and the links and components highlighted by the current Trace mode. The filter also follows highlights from Ask, Health, and Recent. Select a component or change Trace mode to follow the component's trace again. Each lane shows its visible and total component counts. Turn the reticle off to restore the full map.
 - **Live changes.** New components get a green `+` badge, edited ones a yellow `~`, removed ones a red `−`. In 3D, new blocks rise into place and removed blocks briefly fade and sink. Selecting a component sends a bounded sweep along its dependencies; trace modes animate continuous request flow. The 2D lane ruler marks off-screen changes. Layout is stable: existing components keep their order when the map updates.
 - **Change tape.** Every save becomes a tick: height is the size of the change, color its type. Hover a tick to light up what it touched; click to jump there. While an agent is working in a recorded session, its ticks sit on a shaded band.
 - **Insight drawer** (`A`, or the Insights group in the top bar). *Ask* a question and get numbered steps that cite components; *Health* lists security findings from the graph; *Recent* shows what an agent changed and why. All three mark the map rather than replace the lens: `!` for a finding, step numbers for an answer, `+` and `~` for a session's changes, everything else dimmed. See [Ask, health and recent work](#ask-health-and-recent-work).

@@ -33,6 +33,43 @@ export interface Layout {
   lanes: LaneBand[];
   width: number;
   height: number;
+  laneTotals?: ReadonlyMap<ArchLane, number>;
+}
+
+export function countLanes(nodes: Iterable<ArchNode>): Map<ArchLane, number> {
+  const counts = new Map<ArchLane, number>();
+  for (const { lane } of nodes) counts.set(lane, (counts.get(lane) ?? 0) + 1);
+  return counts;
+}
+
+/** Leave room in the ruler for lanes with no visible components. */
+export function withLaneTotals(layout: Layout, laneTotals: ReadonlyMap<ArchLane, number>): Layout {
+  const emptyWidth = 132;
+  const populated = new Map(layout.lanes.map((band) => [band.lane, band]));
+  const insertions: number[] = [];
+  let right = layout.lanes[0]?.x0 ?? 18;
+  const lanes = ARCH_LANES.map((lane) => {
+    const band = populated.get(lane);
+    const offset = insertions.length * emptyWidth;
+    if (band) {
+      right = band.x1;
+      return { lane, x0: band.x0 + offset, x1: band.x1 + offset };
+    }
+    insertions.push(right);
+    return { lane, x0: right + offset, x1: right + offset + emptyWidth };
+  });
+  if (!insertions.length) return { ...layout, laneTotals };
+
+  // Shift nodes and every point of each routed edge by the same lane offsets.
+  const moveX = (x: number) => x + insertions.filter((left) => left <= x).length * emptyWidth;
+  return {
+    ...layout,
+    laneTotals,
+    lanes,
+    width: Math.max(layout.width, right) + insertions.length * emptyWidth,
+    nodes: new Map([...layout.nodes].map(([id, point]) => [id, { ...point, x: moveX(point.x) }])),
+    edges: new Map([...layout.edges].map(([id, edge]) => [id, { ...edge, points: edge.points.map((p) => ({ ...p, x: moveX(p.x) })) }])),
+  };
 }
 
 let elk: Promise<InstanceType<typeof ELK>> | undefined;
