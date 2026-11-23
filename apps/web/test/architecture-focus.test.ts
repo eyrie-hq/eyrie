@@ -2,7 +2,9 @@ import type { ArchEdge, ArchNode } from '@eyrie/core';
 import { expect, it, vi } from 'vitest';
 import { focusSet, visibleMap } from '../src/graph/analysis';
 import { countLanes, withLaneTotals, type Layout } from '../src/graph/layout';
-import { store } from '../src/state/store';
+import { showAllFindings, showFinding, type FindingView } from '../src/lib/findings';
+import { showSession, type SessionView } from '../src/lib/sessions';
+import { store, type HighlightSource } from '../src/state/store';
 
 vi.mock('../src/lib/desktop', () => ({ desktop: undefined }));
 
@@ -44,7 +46,7 @@ it('keeps all lane headers and routes edges to the shifted nodes across empty la
   expect(layout.nodes.get('service')?.x).toBe(320);
 });
 
-it('filters to Ask citations and lets a node selection take over without turning off the filter', () => {
+it.each<HighlightSource>(['ask', 'health', 'recent'])('follows %s highlights and lets component or Trace selections take over', (source) => {
   const originalState = store.get();
   const callsService = link('page', 'service');
   const callsData = link('service', 'data');
@@ -52,16 +54,48 @@ it('filters to Ask citations and lets a node selection take over without turning
   try {
     store.select(page.id);
     store.toggleShowOnlyHighlighted();
-    store.setHighlight({ source: 'ask', ids: [service.id, data.id] });
-    expect(store.get()).toMatchObject({ followAskHighlight: true, showOnlyHighlighted: true, selected: page.id });
+    store.setHighlight({ source, ids: [service.id, data.id] });
+    expect(store.get()).toMatchObject({ followInsightHighlight: true, showOnlyHighlighted: true, selected: page.id });
     expect(visibleMap(graph, new Set(), { nodes: new Set(store.get().highlight?.ids) })).toEqual({ nodes: [service, data], edges: [callsData] });
 
     store.select(service.id);
-    expect(store.get()).toMatchObject({ followAskHighlight: false, showOnlyHighlighted: true, selected: service.id });
-    store.setHighlight({ source: 'ask', ids: [data.id] });
-    expect(store.get().followAskHighlight).toBe(true);
-    store.clearHighlight();
-    expect(store.get().followAskHighlight).toBe(false);
+    expect(store.get()).toMatchObject({ followInsightHighlight: false, showOnlyHighlighted: true, selected: service.id });
+    store.setHighlight({ source, ids: [data.id] });
+    expect(store.get().followInsightHighlight).toBe(true);
+    store.setFocus('downstream');
+    expect(store.get()).toMatchObject({ followInsightHighlight: false, showOnlyHighlighted: true });
+    store.setHighlight({ source, ids: [data.id] });
+    store.setHighlight({ source, ids: [] });
+    expect(store.get()).toMatchObject({ highlight: null, followInsightHighlight: false, showOnlyHighlighted: true, selected: service.id });
+  } finally {
+    store.set(originalState);
+  }
+});
+
+it('clears the Health overview when the open finding has no component on the map', () => {
+  const originalState = store.get();
+  const nodes = new Map([[service.id, service]]);
+  const finding: FindingView = { id: 'finding', rule: 'example', severity: 'high', title: 'Example finding', evidence: '', files: [], componentIds: [service.id], fixPrompt: '' };
+  try {
+    showAllFindings([finding], nodes);
+    expect(store.get().highlight?.ids).toEqual([service.id]);
+    showFinding({ ...finding, componentIds: [data.id] }, nodes);
+    expect(store.get().highlight).toBeNull();
+  } finally {
+    store.set(originalState);
+  }
+});
+
+it('clears the previous Recent highlight when the open session has no component on the map', () => {
+  const originalState = store.get();
+  const nodes = new Map([[service.id, service]]);
+  const changes: SessionView['changes'] = { files: [], added: [], changed: [service], removed: [], linksAdded: [], linksRemoved: [] };
+  const session: SessionView = { id: 1, task: 'Example session', agent: 'example', summary: null, startedAt: 0, endedAt: 1, changes, notes: [], commit: null };
+  try {
+    showSession(session, nodes);
+    expect(store.get().highlight?.ids).toEqual([service.id]);
+    showSession({ ...session, id: 2, changes: { ...changes, changed: [], removed: [data] } }, nodes);
+    expect(store.get().highlight).toBeNull();
   } finally {
     store.set(originalState);
   }

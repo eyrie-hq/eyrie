@@ -125,7 +125,8 @@ Start engine → map renders (System lens on a first visit)
 │    ├── Calls / Used by → click to walk the graph
 │    └── Symbols inside
 ├── Architecture: enable Show only highlighted in the toolbar
-│    └── select another component or open an Ask answer or step → the map and lane counts update
+│    ├── select a component or highlight an item in Ask, Health or Recent → the map and lane counts update
+│    └── open a drawer item with no linked components → the previous drawer highlight clears
 └── press 3 (Sequence) → pick an entry point → read the call order,
      click any message to open the exact line
 ```
