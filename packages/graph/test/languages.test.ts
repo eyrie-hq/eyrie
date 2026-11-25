@@ -451,3 +451,25 @@ describe('Vue', () => {
     expect(uses.every((x) => x.meta?.via === 'render')).toBe(true);
   });
 });
+
+describe('Astro', () => {
+  const files = {
+    'src/pages/index.astro': `---\nimport Base from '../layouts/Base.astro';\nimport Card from '../components/Card.astro';\nimport { getPosts } from '../lib/posts';\nconst posts = await getPosts();\n---\n<Base>\n  {posts.map((p) => <Card post={p} />)}\n</Base>\n`,
+    'src/layouts/Base.astro': `---\nconst { title } = Astro.props;\n---\n<html><body><slot /></body></html>\n`,
+    'src/components/Card.astro': `---\nimport { formatDate } from '../lib/format';\nconst { post } = Astro.props;\nconst when = formatDate(post.date);\n---\n<article>{when}</article>\n<script>\n  import { track } from '../lib/track';\n  track('card');\n</script>\n`,
+    'src/lib/posts.ts': `export async function getPosts() { return fetch('https://api.example.com/posts'); }\n`,
+    'src/lib/format.ts': `export function formatDate(d: Date) { return d.toISOString(); }\n`,
+    'src/lib/track.ts': `export function track(name: string) { return name; }\n`,
+  };
+
+  it('resolves .astro imports, frontmatter calls, client scripts and component usage', async () => {
+    const e = edges(await build(files));
+    expect(e).toContain('IMPORTS src/pages/index.astro -> src/layouts/Base.astro');
+    expect(e).toContain('IMPORTS src/pages/index.astro -> src/components/Card.astro');
+    expect(e).toContain('USES src/pages/index.astro -> src/layouts/Base.astro');
+    expect(e).toContain('USES src/pages/index.astro -> src/components/Card.astro');
+    expect(e).toContain('CALLS src/pages/index.astro#posts -> src/lib/posts.ts#getPosts');
+    expect(e).toContain('CALLS src/components/Card.astro#when -> src/lib/format.ts#formatDate');
+    expect(e).toContain('CALLS src/components/Card.astro -> src/lib/track.ts#track');
+  });
+});

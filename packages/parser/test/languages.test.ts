@@ -12,7 +12,7 @@ describe('language detection', () => {
   it('maps extensions and skips generated code', () => {
     expect(['a.py', 'a.go', 'A.java', 'a.rs', 'A.cs', 'a.php', 'a.rb', 'Rakefile.rake'].map(detectLanguage)).toEqual(['python', 'go', 'java', 'rust', 'csharp', 'php', 'ruby', 'ruby']);
     expect(['A.kt', 'build.kts', 'A.swift', 'a.c', 'a.h', 'a.cpp', 'a.cc', 'a.hpp'].map(detectLanguage)).toEqual(['kotlin', 'kotlin', 'swift', 'c', 'cpp', 'cpp', 'cpp', 'cpp']);
-    expect(['a.dart', 'A.vue', 'a.m', 'a.lua'].map(detectLanguage)).toEqual(['dart', 'vue', 'objc', 'lua']);
+    expect(['a.dart', 'A.vue', 'a.m', 'a.lua', 'Card.astro'].map(detectLanguage)).toEqual(['dart', 'vue', 'objc', 'lua', 'astro']);
     expect(['api.pb.go', 'msg_pb2.py', 'Form1.Designer.cs', 'types.d.ts', 'msg.pb.cc', 'moc_widget.cpp', 'ui_main.h', 'user.g.dart', 'user.freezed.dart'].map(detectLanguage)).toEqual([null, null, null, null, null, null, null, null, null]);
   });
 });
@@ -445,6 +445,69 @@ describe('Lua adapter', () => {
     expect(refs(f, 'M.render')).toEqual(['call:M.greet', 'ref:depth']);
     expect(f.references.find((r) => r.callee.join('.') === 'require')).toBeDefined();
     expect(f.parseErrors).toBe(0);
+  });
+});
+
+describe('Astro adapter', () => {
+  const page = [
+    '---',
+    "import Base from '../layouts/Base.astro';",
+    "import Card from '../components/Card.astro';",
+    "import * as UI from '../components/ui';",
+    "import { getPosts } from '../lib/posts';",
+    '',
+    'const posts = await getPosts(import.meta.env.BLOG_ID);',
+    'function title(p: { title: string }) {',
+    '  return p.title.toUpperCase();',
+    '}',
+    '---',
+    '<Base title="Blog">',
+    '  <h1>Posts</h1>',
+    '  {posts.map((p) => <Card title={title(p)} />)}',
+    '  <UI.Button>More</UI.Button>',
+    '  <Fragment set:html="<b>x</b>" />',
+    '</Base>',
+    '<style>',
+    '  .Card { color: red; }',
+    '  <NotAComponent />',
+    '</style>',
+    '<script>',
+    "  import { track } from '../lib/track';",
+    "  track('view');",
+    '</script>',
+    '<script is:inline>',
+    "  import { never } from './never';",
+    '</script>',
+    '<script src="/vendor.js"></script>',
+    '',
+  ].join('\n');
+
+  it('parses the frontmatter and bundled scripts as TypeScript, with file-absolute lines', async () => {
+    const f = await parse('src/pages/index.astro', page);
+    expect(f.language).toBe('astro');
+    expect(imports(f)).toEqual(['../layouts/Base.astro {default>Base}', '../components/Card.astro {default>Card}', '../components/ui {*>UI}', '../lib/posts {getPosts>getPosts}', '../lib/track {track>track}']);
+    expect(f.imports.map((i) => i.line)).toEqual([2, 3, 4, 5, 23]);
+    expect(f.symbols.find((s) => s.name === 'posts')).toMatchObject({ kind: 'variable', startLine: 7, initCall: 'getPosts' });
+    expect(f.symbols.find((s) => s.name === 'title')).toMatchObject({ kind: 'function', startLine: 8, endLine: 10 });
+    expect(refs(f, 'title')).toEqual(['call:p.title.toUpperCase']);
+    expect(f.references.filter((r) => r.kind === 'call' && r.callee[0] === 'track').map((r) => r.line)).toEqual([24]);
+    expect(f.security!.env).toEqual([{ name: 'BLOG_ID', line: 7 }]);
+    expect(f.parseErrors).toBe(0);
+  });
+
+  it('maps component tags in the template to jsx refs, not HTML, Fragment or style text', async () => {
+    const f = await parse('src/pages/index.astro', page);
+    const jsx = f.references.filter((r) => r.kind === 'jsx');
+    expect(jsx.map((r) => `${r.callee.join('.')}@${r.line}`)).toEqual(['Base@12', 'Card@14', 'UI.Button@15']);
+  });
+
+  it('reads a component without frontmatter, and a lone fence that is not one', async () => {
+    const plain = await parse('src/components/Hello.astro', '<p>Hello</p>\n<Greeting />\n');
+    expect(plain.imports).toEqual([]);
+    expect(plain.references.map((r) => `${r.kind}:${r.callee.join('.')}@${r.line}`)).toEqual(['jsx:Greeting@2']);
+    const open = await parse('src/components/Rule.astro', '---\n<hr />\n');
+    expect(open.symbols).toEqual([]);
+    expect(open.parseErrors).toBe(0);
   });
 });
 
