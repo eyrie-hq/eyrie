@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
 import { deriveArchitecture } from '@eyrie/architecture';
 import {
@@ -22,7 +22,7 @@ import { GraphIndex, type FileUpdate, type ProjectConfig } from '@eyrie/graph';
 import { FACTS_VERSION, SourceParser, contentHash } from '@eyrie/parser';
 import { GraphStorage, type CachedFile } from '@eyrie/storage';
 import { loadProjectConfig } from './config.js';
-import { IgnoreRules, MAX_FILE_BYTES, isConfigFile, isSourceFile, scanRepository } from './scanner.js';
+import { IgnoreRules, MAX_FILE_BYTES, isConfigFile, isIgnoreFile, isSourceFile, scanRepository } from './scanner.js';
 
 export interface EngineOptions {
   root: string;
@@ -236,19 +236,42 @@ export class GraphEngine extends EventEmitter<{ batch: [EngineBatch]; error: [Er
       if (rel.startsWith('..')) return true;
       const isDir = stats?.isDirectory() ?? false;
       if (this.rules.ignores(rel, isDir)) return true;
-      if (stats?.isFile()) return !(isSourceFile(rel) || isConfigFile(rel) || basename(rel) === '.gitignore');
+      if (stats?.isFile()) return !(isSourceFile(rel) || isConfigFile(rel) || isIgnoreFile(rel));
       return false;
     };
-    this.watcher = watch(this.root, {
+    const watcher = watch(this.root, {
       ignored,
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
     });
     const on = (kind: FileChangeKind) => (abs: string) => this.enqueue(toPosix(relative(this.root, abs)), kind);
-    this.watcher.on('add', on('add')).on('change', on('change')).on('unlink', on('unlink'));
-    this.watcher.on('error', (err) => this.emit('error', err instanceof Error ? err : new Error(String(err))));
-    await new Promise<void>((r) => this.watcher!.once('ready', () => r()));
+    watcher.on('add', on('add')).on('change', on('change')).on('unlink', on('unlink'));
+    watcher.on('error', (err) => this.emit('error', err instanceof Error ? err : new Error(String(err))));
+    await new Promise<void>((r) => watcher.once('ready', () => r()));
+    // On a restart the new watcher is ready before the old one closes, so no
+    // save in between is missed; a doubled event is harmless (same content hash).
+    const previous = this.watcher;
+    this.watcher = watcher;
+    await previous?.close();
+  }
+
+  /**
+   * Ignore rules changed: reloads every `.gitignore` / `.eyrieignore` (nested
+   * ones are only found by walking), and adds to `batch` the files the new
+   * rules drop from or bring into the index. The watcher restarts, because a
+   * directory ignored when it started was never watched.
+   */
+  private async reloadIgnoreRules(batch: Map<string, FileChangeKind>): Promise<boolean> {
+    this.rules = new IgnoreRules(this.root);
+    const scan = scanRepository(this.root, this.rules);
+    const scanned = new Set(scan.sources.map((s) => s.path));
+    for (const path of this.index.files) if (!scanned.has(path) && !batch.has(path)) batch.set(path, 'unlink');
+    for (const path of scanned) if (!this.index.files.has(path) && !batch.has(path)) batch.set(path, 'add');
+    const configsChanged = scan.configs.join('\n') !== [...this.configFiles].sort().join('\n');
+    this.configFiles = scan.configs;
+    if (this.watcher) await this.startWatcher();
+    return configsChanged;
   }
 
   /** Feed a change manually (also used when watching is disabled). */
@@ -274,13 +297,11 @@ export class GraphEngine extends EventEmitter<{ batch: [EngineBatch]; error: [Er
     const files: FileChange[] = [];
     const fresh: CachedFile[] = [];
     const removed: string[] = [];
-    let configChanged = false;
+    // Before anything else, so every file in the batch is judged by the new rules.
+    let configChanged = [...batch.keys()].some(isIgnoreFile) && (await this.reloadIgnoreRules(batch));
 
     for (const [rel, kind] of batch) {
-      if (basename(rel) === '.gitignore') {
-        this.rules = new IgnoreRules(this.root);
-        continue;
-      }
+      if (isIgnoreFile(rel)) continue;
       if (isConfigFile(rel)) {
         configChanged = true;
         if (kind === 'add' && !this.configFiles.includes(rel)) this.configFiles.push(rel);

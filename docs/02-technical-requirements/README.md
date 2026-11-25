@@ -175,7 +175,7 @@ There are no user accounts. The trust boundary is "a process on this machine, st
 - **Secrets:** Eyrie holds none. The only secret in play is the run token, which lives in memory and in the opened URL.
 - **Source exposure:** `/api/source` and `/api/open` resolve only against the index. `.env` files, keys and anything git-ignored are never readable through the server. Static file serving normalises paths and refuses anything outside the built web directory.
 - **Input validation:** JSON bodies capped at 64 KB; ids matched against `^[\w-]+$` before lookup; `start`/`end` coerced to numbers.
-- **Ignore rules:** `.gitignore` and `.eyrieignore` are honoured during scanning, so secrets and build output are not even parsed.
+- **Ignore rules:** `.gitignore` and `.eyrieignore` (at any depth) are honoured during scanning, so secrets and build output are not even parsed. Editing either while Eyrie runs reloads every ignore file, drops newly ignored files from the index, adds files a rule no longer hides, and restarts the watcher.
 - **Repositories are untrusted input:** `git` runs without a shell and with fsmonitor, external diff and textconv off; AI prompts carry repository text as data inside a JSON packet, and a note citing any file or component the commit did not touch is stored as `rejected`, never shown as fact.
 - **Logging:** stdout only (stderr in MCP mode), for the operator who started the process. No log shipping.
 - **Backups and recovery:** `graph.db` is disposable. `--reset` ignores it; deleting `~/.eyrie/repos/<hash>/` forces a clean re-index and also deletes `knowledge.db` (recorded commits are read again; AI notes would have to be paid for again). The repository is the only other durable state and Eyrie never writes to it.
