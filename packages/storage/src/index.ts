@@ -1,3 +1,4 @@
+import { createHash, type Hash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { CodeDiff, CodeEdge, CodeNode, FileFacts } from '@eyrie/core';
@@ -19,6 +20,24 @@ type Database = InstanceType<typeof DatabaseSync>;
 
 /** Bump when the schema changes; old databases are rebuilt. */
 const SCHEMA_VERSION = '1';
+
+const NODES_TABLE = `CREATE TABLE IF NOT EXISTS nodes (
+  id TEXT NOT NULL, repo_id TEXT NOT NULL, file TEXT, kind TEXT NOT NULL, name TEXT NOT NULL,
+  qualified_name TEXT NOT NULL, start_line INTEGER, end_line INTEGER, data TEXT NOT NULL,
+  PRIMARY KEY (repo_id, id)
+)`;
+const EDGES_TABLE = `CREATE TABLE IF NOT EXISTS edges (
+  id TEXT NOT NULL, repo_id TEXT NOT NULL, source_id TEXT NOT NULL, target_id TEXT NOT NULL,
+  kind TEXT NOT NULL, confidence REAL NOT NULL, owner TEXT, data TEXT NOT NULL,
+  PRIMARY KEY (repo_id, id)
+)`;
+const GRAPH_INDEXES = `
+  CREATE INDEX IF NOT EXISTS nodes_file ON nodes (repo_id, file);
+  CREATE INDEX IF NOT EXISTS edges_source ON edges (repo_id, source_id);
+  CREATE INDEX IF NOT EXISTS edges_target ON edges (repo_id, target_id);
+`;
+/** `meta` key of the digest of the graph rows a repository has stored. */
+const graphDigestKey = (repoId: string) => `graph_digest:${repoId}`;
 
 export interface CachedFile {
   path: string;
@@ -51,6 +70,7 @@ export class GraphStorage {
     const schema = this.getMeta('schema_version');
     if (schema !== SCHEMA_VERSION) {
       this.db.exec('DROP TABLE IF EXISTS repositories; DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS nodes; DROP TABLE IF EXISTS edges; DROP TABLE IF EXISTS snapshots;');
+      this.db.exec("DELETE FROM meta WHERE key LIKE 'graph_digest:%'");
     }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS repositories (
@@ -62,19 +82,9 @@ export class GraphStorage {
         size INTEGER, mtime INTEGER, last_parsed INTEGER, facts TEXT NOT NULL,
         PRIMARY KEY (repo_id, path)
       );
-      CREATE TABLE IF NOT EXISTS nodes (
-        id TEXT NOT NULL, repo_id TEXT NOT NULL, file TEXT, kind TEXT NOT NULL, name TEXT NOT NULL,
-        qualified_name TEXT NOT NULL, start_line INTEGER, end_line INTEGER, data TEXT NOT NULL,
-        PRIMARY KEY (repo_id, id)
-      );
-      CREATE INDEX IF NOT EXISTS nodes_file ON nodes (repo_id, file);
-      CREATE TABLE IF NOT EXISTS edges (
-        id TEXT NOT NULL, repo_id TEXT NOT NULL, source_id TEXT NOT NULL, target_id TEXT NOT NULL,
-        kind TEXT NOT NULL, confidence REAL NOT NULL, owner TEXT, data TEXT NOT NULL,
-        PRIMARY KEY (repo_id, id)
-      );
-      CREATE INDEX IF NOT EXISTS edges_source ON edges (repo_id, source_id);
-      CREATE INDEX IF NOT EXISTS edges_target ON edges (repo_id, target_id);
+      ${NODES_TABLE};
+      ${EDGES_TABLE};
+      ${GRAPH_INDEXES}
       CREATE TABLE IF NOT EXISTS snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id TEXT NOT NULL, commit_hash TEXT,
         created_at INTEGER NOT NULL, metadata TEXT
@@ -145,18 +155,51 @@ export class GraphStorage {
     });
   }
 
-  /** Replaces the stored graph (after a full build). */
-  replaceGraph(repoId: string, nodes: Iterable<CodeNode>, edges: Iterable<CodeEdge>): void {
+  /**
+   * Replaces the stored graph (after a full build). Returns false, writing
+   * nothing, when the stored rows are already exactly these: a restart of an
+   * unchanged repository then costs a digest instead of a rewrite.
+   */
+  replaceGraph(repoId: string, nodes: Iterable<CodeNode>, edges: Iterable<CodeEdge>): boolean {
+    const nodeList = [...nodes];
+    const edgeList = [...edges];
+    const key = graphDigestKey(repoId);
+    const stored = this.getMeta(key);
+    // Hashing costs a serialisation of every row, so it runs up front only when a skip is
+    // possible. The counts also catch rows changed by an older Eyrie sharing this cache,
+    // which does not clear the digest.
+    const unchanged = stored !== undefined && this.countRows('nodes', repoId) === nodeList.length && this.countRows('edges', repoId) === edgeList.length && graphDigest(repoId, nodeList, edgeList) === stored;
+    if (unchanged) return false;
     this.transaction(() => {
-      this.db.prepare('DELETE FROM nodes WHERE repo_id = ?').run(repoId);
-      this.db.prepare('DELETE FROM edges WHERE repo_id = ?').run(repoId);
-      this.writeNodes(repoId, nodes);
-      this.writeEdges(repoId, edges);
+      // Bulk load when no other repository shares the tables: empty tables with no indexes
+      // to maintain row by row, then one index build each.
+      const bulk = this.holdsOnlyGraphOf(repoId);
+      if (bulk) this.db.exec(`DROP TABLE nodes; DROP TABLE edges; ${NODES_TABLE}; ${EDGES_TABLE};`);
+      else {
+        this.db.prepare('DELETE FROM nodes WHERE repo_id = ?').run(repoId);
+        this.db.prepare('DELETE FROM edges WHERE repo_id = ?').run(repoId);
+      }
+      // The digest is taken from the very strings written, in the same pass.
+      const digest = startDigest(repoId);
+      this.insertNodes(repoId, nodeList, digest);
+      digest.update('\0');
+      this.insertEdges(repoId, edgeList, digest);
+      if (bulk) this.db.exec(GRAPH_INDEXES);
+      this.setMeta(key, digest.digest('hex'));
     });
+    return true;
+  }
+
+  /** True when no other repository has graph rows in this database (the usual case: one database per repository). */
+  private holdsOnlyGraphOf(repoId: string): boolean {
+    const other = (table: string) => this.db.prepare(`SELECT 1 FROM ${table} WHERE repo_id <> ? LIMIT 1`).get(repoId) !== undefined;
+    return !other('nodes') && !other('edges');
   }
 
   applyDiff(repoId: string, diff: CodeDiff): void {
     this.transaction(() => {
+      // The stored rows no longer match the digest of the last full write.
+      this.db.prepare('DELETE FROM meta WHERE key = ?').run(graphDigestKey(repoId));
       const delNode = this.db.prepare('DELETE FROM nodes WHERE repo_id = ? AND id = ?');
       const delEdge = this.db.prepare('DELETE FROM edges WHERE repo_id = ? AND id = ?');
       for (const id of diff.removedEdges) delEdge.run(repoId, id);
@@ -171,16 +214,34 @@ export class GraphStorage {
   }
 
   counts(repoId: string): { files: number; nodes: number; edges: number } {
-    const one = (sql: string) => (this.db.prepare(sql).get(repoId) as { n: number }).n;
-    return {
-      files: one('SELECT COUNT(*) AS n FROM files WHERE repo_id = ?'),
-      nodes: one('SELECT COUNT(*) AS n FROM nodes WHERE repo_id = ?'),
-      edges: one('SELECT COUNT(*) AS n FROM edges WHERE repo_id = ?'),
-    };
+    return { files: this.countRows('files', repoId), nodes: this.countRows('nodes', repoId), edges: this.countRows('edges', repoId) };
+  }
+
+  private countRows(table: 'files' | 'nodes' | 'edges', repoId: string): number {
+    return (this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE repo_id = ?`).get(repoId) as { n: number }).n;
   }
 
   close(): void {
     this.db.close();
+  }
+
+  /** Plain inserts (replaceGraph has just removed the repository's rows), adding each row to `digest`. */
+  private insertNodes(repoId: string, nodes: CodeNode[], digest: Hash): void {
+    const stmt = this.db.prepare('INSERT INTO nodes (id, repo_id, file, kind, name, qualified_name, start_line, end_line, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const n of nodes) {
+      const data = JSON.stringify(n);
+      digest.update(data).update('\n');
+      stmt.run(n.id, repoId, n.file ?? null, n.kind, n.name, n.qualifiedName, n.range?.start ?? null, n.range?.end ?? null, data);
+    }
+  }
+
+  private insertEdges(repoId: string, edges: CodeEdge[], digest: Hash): void {
+    const stmt = this.db.prepare('INSERT INTO edges (id, repo_id, source_id, target_id, kind, confidence, owner, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const e of edges) {
+      const data = JSON.stringify(e);
+      digest.update(data).update('\n');
+      stmt.run(e.id, repoId, e.source, e.target, e.kind, e.confidence, e.owner ?? null, data);
+    }
   }
 
   private writeNodes(repoId: string, nodes: Iterable<CodeNode>): void {
@@ -200,4 +261,20 @@ export class GraphStorage {
     );
     for (const e of edges) stmt.run(e.id, repoId, e.source, e.target, e.kind, e.confidence, e.owner ?? null, JSON.stringify(e));
   }
+}
+
+const startDigest = (repoId: string): Hash => createHash('sha256').update(repoId).update('\0');
+
+/**
+ * Digest of the rows replaceGraph would write, the same as the one it takes
+ * while writing them. Every column is derived from the serialised node or
+ * edge, so hashing that text covers the whole row; the order is the graph's
+ * own, which a deterministic build keeps.
+ */
+function graphDigest(repoId: string, nodes: CodeNode[], edges: CodeEdge[]): string {
+  const h = startDigest(repoId);
+  for (const n of nodes) h.update(JSON.stringify(n)).update('\n');
+  h.update('\0');
+  for (const e of edges) h.update(JSON.stringify(e)).update('\n');
+  return h.digest('hex');
 }

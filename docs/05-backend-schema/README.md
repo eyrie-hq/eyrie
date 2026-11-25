@@ -47,7 +47,7 @@ Row shapes are "columns for querying, JSON for fidelity": indexed scalars are pr
 | `key` | TEXT | **PK** |
 | `value` | TEXT | NOT NULL |
 
-Two keys matter: `schema_version` (table shape) and `facts_version` (parser output shape). See §7.
+Two keys matter: `schema_version` (table shape) and `facts_version` (parser output shape). See §7. `graph_digest:<repo_id>` holds the SHA-256 of the graph rows the last `replaceGraph` wrote, so a restart with an identical graph skips the rewrite; `applyDiff` deletes it.
 
 ### `repositories` — the indexed repository
 
@@ -197,8 +197,8 @@ Every mutation runs inside an explicit `BEGIN` / `COMMIT` with `ROLLBACK` on err
 | `upsertRepository` | Insert or refresh the repository row |
 | `loadFiles` | Load the whole facts cache for a repo into memory as a `Map` |
 | `saveFiles(files, removed)` | Upsert parsed files and delete removed paths, in one transaction; no-op when both are empty |
-| `replaceGraph` | After a full build: delete all nodes and edges for the repo, then rewrite |
-| `applyDiff` | Incremental: delete removed **edges first**, then removed nodes, then upsert added + updated nodes, then edges — so no edge ever references a node that has not been written |
+| `replaceGraph` | After a full build. Skipped when the digest of the rows equals `graph_digest:<repo_id>` and the row counts match (a restart of an unchanged repository). Otherwise, when no other repository has rows in the file, the `nodes` and `edges` tables are dropped, recreated, filled with plain inserts and indexed afterwards; with several repositories, the repo's rows are deleted and rewritten |
+| `applyDiff` | Incremental: clear the repo's `graph_digest`, delete removed **edges first**, then removed nodes, then upsert added + updated nodes, then edges — so no edge ever references a node that has not been written |
 | `recordSnapshot` | Append a snapshot row |
 | `counts` | `files` / `nodes` / `edges` counts, surfaced as `stats` on `/api/state`, `hello` and every `batch` |
 

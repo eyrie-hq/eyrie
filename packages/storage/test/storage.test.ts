@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CodeEdge, CodeNode, FileFacts } from '@eyrie/core';
 import { GraphStorage, type CachedFile } from '../src/index.js';
 
+const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
+
 function facts(path: string, hash: string): FileFacts {
   return { path, language: 'typescript', hash, loc: 1, directives: [], imports: [], exports: [], symbols: [], references: [], routes: [], parseErrors: 0 };
 }
@@ -97,4 +99,61 @@ describe('GraphStorage', () => {
     expect(s.counts('repo')).toEqual({ files: 0, nodes: 1, edges: 0 });
     s.close();
   });
+
+  it('writes an unchanged graph only once', () => {
+    const s = GraphStorage.open(db, { factsVersion: '1' });
+    const nodes = [node('a'), node('b')];
+    const edges = [edge('ab', 'a', 'b')];
+    expect(s.replaceGraph('repo', nodes, edges)).toBe(true);
+    expect(s.replaceGraph('repo', nodes, edges)).toBe(false);
+    s.close();
+    // The digest survives a restart, like the graph it describes.
+    const again = GraphStorage.open(db, { factsVersion: '1' });
+    expect(again.replaceGraph('repo', nodes, edges)).toBe(false);
+    // Any change to a row is a rewrite.
+    expect(again.replaceGraph('repo', nodes, [{ ...edge('ab', 'a', 'b'), confidence: 0.5 }])).toBe(true);
+    expect(rows(db, 'edges')).toEqual([['ab', 'repo', 0.5]]);
+    again.close();
+  });
+
+  it('rewrites after a diff, and when the stored rows were changed behind its back', () => {
+    const s = GraphStorage.open(db, { factsVersion: '1' });
+    const nodes = [node('a'), node('b')];
+    s.replaceGraph('repo', nodes, []);
+    s.applyDiff('repo', { addedNodes: [node('c')], updatedNodes: [], removedNodes: [], addedEdges: [], updatedEdges: [], removedEdges: [] });
+    expect(s.replaceGraph('repo', nodes, [])).toBe(true);
+    expect(s.counts('repo').nodes).toBe(2);
+    s.close();
+    // An older Eyrie sharing the cache applies diffs without clearing the digest.
+    const other = new DatabaseSync(db);
+    other.exec("DELETE FROM nodes WHERE id = 'b'");
+    other.close();
+    const again = GraphStorage.open(db, { factsVersion: '1' });
+    expect(again.replaceGraph('repo', nodes, [])).toBe(true);
+    expect(again.counts('repo').nodes).toBe(2);
+    again.close();
+  });
+
+  it('bulk-loads a graph with its indexes, and leaves other repositories alone', () => {
+    const s = GraphStorage.open(db, { factsVersion: '1' });
+    s.replaceGraph('one', [node('a'), node('b')], [edge('ab', 'a', 'b')]);
+    s.replaceGraph('two', [node('z')], []);
+    s.replaceGraph('one', [node('a')], []);
+    expect(s.counts('one')).toEqual({ files: 0, nodes: 1, edges: 0 });
+    expect(s.counts('two')).toEqual({ files: 0, nodes: 1, edges: 0 });
+    s.close();
+    const raw = new DatabaseSync(db);
+    const indexes = raw.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
+    raw.close();
+    expect(indexes.map((r) => r.name)).toEqual(['edges_source', 'edges_target', 'nodes_file']);
+  });
 });
+
+/** A table's rows as `[id, repo_id, confidence]` (edges) or `[id, repo_id, kind]` (nodes), read without GraphStorage. */
+function rows(path: string, table: 'nodes' | 'edges'): unknown[][] {
+  const raw = new DatabaseSync(path);
+  const third = table === 'edges' ? 'confidence' : 'kind';
+  const out = raw.prepare(`SELECT id, repo_id, ${third} AS third FROM ${table} ORDER BY id`).all().map((r) => [r.id, r.repo_id, r.third]);
+  raw.close();
+  return out;
+}
