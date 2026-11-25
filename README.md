@@ -271,7 +271,7 @@ git log ── new commits ──► knowledge.db ◄── components each comm
 | --- | --- |
 | Next.js | App Router `page`, `route` (per HTTP method), `layout`, `middleware`/`proxy`, Pages Router pages and `pages/api`, `next/dynamic` imports, server actions |
 | HTTP | `fetch`, `axios` and `axios.create()` instances, `ky`, `ofetch`, `useSWR`, template and concatenated URLs, matched to routes including dynamic segments; external hosts mapped to providers |
-| Node.js | Express/Hono/Fastify-style `app.get('/path', handler)` routes, CommonJS `require`/`module.exports` |
+| Node.js | Express/Hono/Fastify-style `app.get('/path', handler)` routes, CommonJS `require`/`module.exports`, dynamic `import()` bound to a name, destructured or passed to `.then()` |
 | Data | Prisma schema models with reads/writes per operation, Drizzle tables, Mongoose models, Supabase tables |
 | Python | Flask / FastAPI decorator routes (with blueprint and router prefixes), Django `urlpatterns`; Django, SQLAlchemy and SQLModel models; `requests` / `httpx` calls |
 | Go | `net/http` (including Go 1.22 `"POST /x"` patterns), gin, echo, chi, fiber and gorilla/mux routes; gorm models; `http.Get` calls |

@@ -24,6 +24,32 @@ describe('TypeScript adapter', () => {
     ]);
   });
 
+  it('binds dynamic imports as the module or the names they take', async () => {
+    const f = await parse(
+      'src/load.ts',
+      `const mod = await import('./a');
+const { b, c: see } = await import('./b');
+export async function load() {
+  const m = await import('./c');
+  const { d } = await import('./d');
+  await import('./side');
+  return import('./e').then(({ e }) => e(m, d));
+}
+export const Lazy = lazy(() => import('./f'));
+`,
+    );
+    expect(f.imports.map((i) => [i.source, i.dynamic, i.specifiers.map((s) => `${s.imported}>${s.local}`)])).toEqual([
+      ['./a', true, ['*>mod']],
+      ['./b', true, ['b>b', 'c>see']],
+      ['./c', true, ['*>m']],
+      ['./d', true, ['d>d']],
+      ['./side', true, []],
+      ['./e', true, ['e>e']],
+      ['./f', true, ['default>Lazy']],
+    ]);
+    expect(f.symbols.map((s) => s.name)).toEqual(['load']);
+  });
+
   it('records classes with fields, constructor parameter properties and method scopes', async () => {
     const f = await parse(
       'src/a.ts',

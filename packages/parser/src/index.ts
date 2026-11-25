@@ -26,7 +26,7 @@ export { goPackageName } from './go.js';
 export { extractSecurity } from './security.js';
 
 /** Bump whenever extraction output changes so cached facts are re-parsed. */
-export const FACTS_VERSION = '5';
+export const FACTS_VERSION = '6';
 
 /**
  * A language adapter turns one file into facts. Adding a language means
