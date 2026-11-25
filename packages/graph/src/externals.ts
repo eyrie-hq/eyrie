@@ -3,6 +3,7 @@
  * Imports of these packages become `external_service` nodes so the
  * architecture graph can show "AI Service → OpenAI" without AI guessing.
  */
+import { ownValue } from '@eyrie/core';
 
 export type ExternalCategory =
   | 'ai'
@@ -354,7 +355,8 @@ const QUALIFIED: [string, ExternalProvider][] = [
 
 export function providerForPackage(specifier: string): ExternalProvider | null {
   const name = packageName(specifier);
-  if (PACKAGES[name]) return PACKAGES[name]!;
+  const known = ownValue(PACKAGES, name);
+  if (known) return known;
   if (name.startsWith('@langchain/')) return PROVIDERS.langchain;
   if (name.startsWith('@aws-sdk/')) return PROVIDERS.aws;
   // Match within the specifier's own style, so Go's `github.com/x` is not Python's `github`.
@@ -378,5 +380,5 @@ export function providerForUrl(url: string): ExternalProvider | null {
     return null;
   }
   if (!host || host === 'localhost' || host === '127.0.0.1') return null;
-  return HOSTS[host] ?? { id: `host:${host}`, label: host, category: 'api' };
+  return ownValue(HOSTS, host) ?? { id: `host:${host}`, label: host, category: 'api' };
 }

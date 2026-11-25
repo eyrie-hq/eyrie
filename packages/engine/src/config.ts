@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import JSON5 from 'json5';
+import { ownValue } from '@eyrie/core';
 import type { AliasConfig, GoModule, ProjectConfig, WorkspacePackage } from '@eyrie/graph';
 
 const toPosix = (p: string) => p.split(sep).join('/');
@@ -155,7 +156,7 @@ export function loadProjectConfig(root: string, configFiles: string[]): LoadedCo
       if (!pkg) continue;
       for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
         for (const dep of Object.keys((pkg[field] as Record<string, string> | undefined) ?? {})) {
-          const fw = FRAMEWORK_DEPS[dep];
+          const fw = ownValue(FRAMEWORK_DEPS, dep);
           if (fw) frameworks.add(fw);
         }
       }

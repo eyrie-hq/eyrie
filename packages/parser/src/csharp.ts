@@ -8,7 +8,7 @@
  * Bare field and method names inside a class become `this.x`.
  */
 import type { Node } from 'web-tree-sitter';
-import type { ArgFact, FieldFact, ImportFact, ModelFact, SymbolFact, SymbolKind } from '@eyrie/core';
+import { ownValue, type ArgFact, type FieldFact, type ImportFact, type ModelFact, type SymbolFact, type SymbolKind } from '@eyrie/core';
 import { BaseExtractor, joinRoute, line } from './base.js';
 
 const MAX_CHAIN = 6;
@@ -312,7 +312,7 @@ export class CSharpExtractor extends BaseExtractor {
     const routeAttr = attrs.find((a) => a.name === 'Route');
     const expand = (p: string) => p.replace(/\[controller\]/gi, controller.toLowerCase()).replace(/\[action\]/gi, action.toLowerCase());
     for (const a of attrs) {
-      const method = VERB_ATTRS[a.name];
+      const method = ownValue(VERB_ATTRS, a.name);
       if (!method) continue;
       const own = attrString(a.args) ?? (routeAttr ? attrString(routeAttr.args) : undefined) ?? '';
       const path = own.startsWith('/') || own.startsWith('~/') ? own.replace(/^~/, '') : joinRoute(prefix, own);
@@ -472,7 +472,7 @@ export class CSharpExtractor extends BaseExtractor {
   /** `app.MapGet("/x", Handler)` / `group.MapPost(...)`. */
   private minimalApi(node: Node, c: string[], args: Node[]): boolean {
     if (c.length !== 2) return false;
-    const method = MAP_VERBS[c[1]!];
+    const method = ownValue(MAP_VERBS, c[1]!);
     const path = args[0] ? literal(args[0]) : null;
     if (!method || typeof path !== 'string') return false;
     const full = joinRoute(this.groups.get(c[0]!), path);

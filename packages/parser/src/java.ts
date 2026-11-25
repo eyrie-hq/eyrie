@@ -8,7 +8,7 @@
  * graph resolves them through field types.
  */
 import type { Node } from 'web-tree-sitter';
-import type { ArgFact, FieldFact, ImportFact, ModelFact, SymbolFact, SymbolKind } from '@eyrie/core';
+import { ownValue, type ArgFact, type FieldFact, type ImportFact, type ModelFact, type SymbolFact, type SymbolKind } from '@eyrie/core';
 import { BaseExtractor, joinRoute, line } from './base.js';
 
 const MAX_CHAIN = 6;
@@ -277,7 +277,7 @@ export class JavaExtractor extends BaseExtractor {
     let jaxPath: string | undefined;
     const jaxVerbs: string[] = [];
     for (const a of annotations(node)) {
-      const verb = SPRING_VERBS[a.name];
+      const verb = ownValue(SPRING_VERBS, a.name);
       if (verb || a.name === 'RequestMapping') {
         const path = annotationString(a.args) ?? '';
         let methods = verb ? [verb] : [];

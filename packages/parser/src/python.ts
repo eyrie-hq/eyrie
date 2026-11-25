@@ -8,7 +8,7 @@
  * graph resolves them like JavaScript classes.
  */
 import type { Node } from 'web-tree-sitter';
-import type { ArgFact, FieldFact, ImportSpecifier, ModelFact, SymbolFact } from '@eyrie/core';
+import { ownValue, type ArgFact, type FieldFact, type ImportSpecifier, type ModelFact, type SymbolFact } from '@eyrie/core';
 import { BaseExtractor, cleanComment, endLine, joinRoute, line, normalizeRoutePath } from './base.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
@@ -327,7 +327,7 @@ export class PythonExtractor extends BaseExtractor {
     // SQLModel: `class User(UserBase, table=True)` is a table whatever its base.
     let orm: string | undefined = tableKw ? 'sqlmodel' : undefined;
     for (const b of bases) {
-      const o = ORM_BASES[b];
+      const o = ownValue(ORM_BASES, b);
       if (!o) continue;
       if (o === 'sqlmodel' && !tableKw) continue;
       // `class Base(DeclarativeBase): pass` is the base, not a table.
