@@ -24,7 +24,7 @@ import { runHealthCheck } from './check.js';
 /** Protocol revisions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
-const INSTRUCTIONS = `Eyrie keeps a live architecture map of this repository: components (pages, API routes, services, data models, external services…) in lanes ui → edge → api → logic → data → external, and the links between them. Every link comes from parsed code, and the map updates as files are saved.
+export const INSTRUCTIONS = `Eyrie keeps a live architecture map of this repository: components (pages, API routes, services, data models, external services…) in lanes ui → edge → api → logic → data → external, and the links between them. Every link comes from parsed code, and the map updates as files are saved.
 Before editing, call components_for_files with the files you plan to change, and impact on the components involved, to see what depends on them. At the start of a task, call record_intent with the task; call it again with done when the task ends. After editing, call recent_changes to see what your edits changed in the architecture: new or removed components and links you may not have intended. Call check on the files you touched for new findings: hardcoded secrets, unguarded writes, unverified webhooks and the rest.
 Refer to a component by the id these tools return; a name or file path works when it is unambiguous. commit_history includes AI notes on commits when the user turned them on; those are labelled opinions, not facts. ask answers a question about the architecture with a model, grounded in these tools; it runs a model, so prefer the direct tools for single facts.`;
 
@@ -51,6 +51,118 @@ interface Tool {
   /** Overrides the default read-only annotations, for tools that store their answer locally. */
   annotations?: { readOnlyHint?: boolean; idempotentHint?: boolean };
 }
+
+const COMPONENT = { type: 'string', description: 'A component id from another tool, or its exact name, or one of its file paths' };
+
+/** What tools/list describes for each tool; EyrieMcp binds each to its project. */
+export const TOOL_SPECS: readonly Omit<Tool, 'run'>[] = [
+  {
+    name: 'architecture_overview',
+    title: 'Architecture overview',
+    description: 'The repository at a glance: frameworks, size, every architecture component grouped by lane (ui → edge → api → logic → data → external), and the most connected components. Start here.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'find_components',
+    title: 'Find components',
+    description: 'Search components by name, route, domain or file path.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number', description: 'Most results (default 20)' } }, required: ['query'] },
+  },
+  {
+    name: 'explain_component',
+    title: 'Explain a component',
+    description: 'What a component is: its kind, lane, files, the symbols it holds, what it depends on and what uses it (with call sites), and recent commits that touched it.',
+    inputSchema: { type: 'object', properties: { COMPONENT }, required: ['component'] },
+  },
+  {
+    name: 'impact',
+    title: 'Impact of changing a component',
+    description: 'Everything that depends on a component, directly or through others: what could break if it changes. Use before editing it.',
+    inputSchema: { type: 'object', properties: { COMPONENT }, required: ['component'] },
+  },
+  {
+    name: 'trace',
+    title: 'Trace what a component reaches',
+    description: 'Everything a component depends on, directly or through others: what a request through it touches, down to data and external services.',
+    inputSchema: { type: 'object', properties: { COMPONENT }, required: ['component'] },
+  },
+  {
+    name: 'find_path',
+    title: 'Path between two components',
+    description: 'The shortest chain of dependencies from one component to another, with the kind of each link. Also checks the reverse direction.',
+    inputSchema: { type: 'object', properties: { from: COMPONENT, to: COMPONENT }, required: ['from', 'to'] },
+  },
+  {
+    name: 'components_for_files',
+    title: 'Components for files',
+    description: 'Which architecture components own the given files, and how many components use each. Call with the files you are about to edit.',
+    inputSchema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' }, description: 'Paths relative to the repository, or absolute' } }, required: ['files'] },
+  },
+  {
+    name: 'recent_changes',
+    title: 'Recent architecture changes',
+    description: 'What file saves changed in the architecture since this server started: components and links added or removed. Call after editing to check nothing unintended moved. Pass `since` (a seq from an earlier call) for only newer changes.',
+    inputSchema: { type: 'object', properties: { since: { type: 'number', description: 'Only changes after this seq' } } },
+  },
+  {
+    name: 'record_intent',
+    title: 'Record task intent',
+    description:
+      'Tell Eyrie what you are working on: call with the task when you start, and again with done (and a summary) when you end. Eyrie keeps the session — task, agent, time, and the components your edits changed — so the user sees the why behind recent work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'What you are about to do. Starts a session; ends any session of yours still open.' },
+        summary: { type: 'string', description: 'What you did. Ends the open session when given with done.' },
+        done: { type: 'boolean', description: 'End the open session.' },
+      },
+      required: [],
+    },
+    annotations: { readOnlyHint: false, idempotentHint: false },
+  },
+  {
+    name: 'commit_history',
+    title: 'Commit history',
+    description:
+      'Recent commits Eyrie recorded, newest first, with the components each touched and the coding agent that co-authored it. Includes an AI note per commit (intent, whether the change matches its message, risk) when the user turned notes on. Filter by component or agent, or pass a hash for one commit in full.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Most commits (default 10)' },
+        component: { ...COMPONENT, description: 'Only commits that touched this component' },
+        agent: { type: 'string', description: 'Only commits co-authored by this agent, e.g. Claude or Codex' },
+        hash: { type: 'string', description: 'One commit, by full or abbreviated hash' },
+      },
+    },
+  },
+  {
+    name: 'check',
+    title: 'Health check',
+    description:
+      'Security and health findings from the architecture graph: hardcoded secrets, secrets in public env vars, exposed .env files, tables without row-level security, test-mode rules, routes that reach a write with no auth guard, server env read in UI code, and webhooks without verification. Pass the files you changed to limit the findings to them; without files, the whole project is checked.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string' }, description: 'Paths relative to the repository, or absolute. Omit to check everything.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'ask',
+    title: 'Ask the map',
+    description:
+      'Ask a question about the architecture in plain language ("where does checkout write?", "what uses the cart service?"). A model answers by calling the read-only tools above; every component it names comes back from a tool call. Runs a model, so prefer the direct tools for single facts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'The question, in plain language' },
+      },
+      required: ['question'],
+    },
+    annotations: { readOnlyHint: false, idempotentHint: false },
+  },
+];
 
 /** A tool's answer when a component reference matches several components, or none. */
 class LookupError extends Error {
@@ -128,6 +240,11 @@ export class EyrieMcp {
 
   dispose(): void {
     this.opts.engine.off('batch', this.onBatch);
+  }
+
+  /** Whether this client has a record_intent session open here: a repository that must stay open. */
+  hasOpenSession(): boolean {
+    return !!this.knowledge?.store.openSession(agentOfClient(this.clientName ?? 'unknown'));
   }
 
   /** Answers one JSON-RPC message; null for notifications, which get no answer. */
@@ -352,158 +469,52 @@ export class EyrieMcp {
   // ── tools ───────────────────────────────────────────────────────────────
 
   private defineTools(): Tool[] {
-    const component = { type: 'string', description: 'A component id from another tool, or its exact name, or one of its file paths' };
-    return [
-      {
-        name: 'architecture_overview',
-        title: 'Architecture overview',
-        description: 'The repository at a glance: frameworks, size, every architecture component grouped by lane (ui → edge → api → logic → data → external), and the most connected components. Start here.',
-        inputSchema: { type: 'object', properties: {} },
-        run: () => this.overview(),
+    const run: Record<string, Tool['run']> = {
+      architecture_overview: () => this.overview(),
+      find_components: (args) => {
+        const query = String(args.query ?? '');
+        const limit = countArg(args.limit, 20, 100);
+        const found = [...this.nodes.values()].filter((n) => matches(n, query));
+        return { found: found.length, components: found.slice(0, limit).map((n) => ({ ...brief(n), sublabel: n.sublabel, files: n.files.slice(0, 3) })) };
       },
-      {
-        name: 'find_components',
-        title: 'Find components',
-        description: 'Search components by name, route, domain or file path.',
-        inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number', description: 'Most results (default 20)' } }, required: ['query'] },
-        run: (args) => {
-          const query = String(args.query ?? '');
-          const limit = countArg(args.limit, 20, 100);
-          const found = [...this.nodes.values()].filter((n) => matches(n, query));
-          return { found: found.length, components: found.slice(0, limit).map((n) => ({ ...brief(n), sublabel: n.sublabel, files: n.files.slice(0, 3) })) };
-        },
+      explain_component: (args) => this.explain(this.resolve(args.component)),
+      impact: (args) => this.closure(this.resolve(args.component), 'upstream'),
+      trace: (args) => this.closure(this.resolve(args.component), 'downstream'),
+      find_path: (args) => this.path(this.resolve(args.from), this.resolve(args.to)),
+      components_for_files: (args) => {
+        // A single path is common enough from agents to accept as it is.
+        const files = Array.isArray(args.files) ? args.files.map(String) : typeof args.files === 'string' ? [args.files] : [];
+        if (!files.length) throw new Error('Give the files as a list of paths.');
+        return this.forFiles(files);
       },
-      {
-        name: 'explain_component',
-        title: 'Explain a component',
-        description: 'What a component is: its kind, lane, files, the symbols it holds, what it depends on and what uses it (with call sites), and recent commits that touched it.',
-        inputSchema: { type: 'object', properties: { component }, required: ['component'] },
-        run: (args) => this.explain(this.resolve(args.component)),
+      recent_changes: (args) => {
+        const since = Number(args.since) || 0;
+        const changes = this.changes.filter((c) => c.seq > since && (c.componentsAdded.length || c.componentsRemoved.length || c.componentsChanged.length || c.linksAdded.length || c.linksRemoved.length || c.files.length));
+        return { latestSeq: this.opts.engine.seq, changes };
       },
-      {
-        name: 'impact',
-        title: 'Impact of changing a component',
-        description: 'Everything that depends on a component, directly or through others: what could break if it changes. Use before editing it.',
-        inputSchema: { type: 'object', properties: { component }, required: ['component'] },
-        run: (args) => this.closure(this.resolve(args.component), 'upstream'),
+      record_intent: async (args) => {
+        const knowledge = this.knowledge;
+        if (!knowledge) throw new Error('Sessions need the knowledge store, which this server was started without.');
+        const agent = agentOfClient(this.clientName ?? 'unknown');
+        if (args.done === true) return this.endIntent(knowledge.store, agent, typeof args.summary === 'string' ? args.summary : null);
+        const task = typeof args.task === 'string' ? args.task.trim() : '';
+        if (!task) throw new Error('Give the task you are starting, or end the open session with done.');
+        if (task.length > 500) throw new Error('Keep the task to 500 characters.');
+        return this.startIntent(knowledge.store, agent, task);
       },
-      {
-        name: 'trace',
-        title: 'Trace what a component reaches',
-        description: 'Everything a component depends on, directly or through others: what a request through it touches, down to data and external services.',
-        inputSchema: { type: 'object', properties: { component }, required: ['component'] },
-        run: (args) => this.closure(this.resolve(args.component), 'downstream'),
+      commit_history: (args) => this.commits(args),
+      check: async (args) => {
+        const files = Array.isArray(args.files) ? args.files.map(String) : typeof args.files === 'string' ? [args.files] : undefined;
+        return runHealthCheck(this.opts.engine, { onlyFiles: files?.map((f) => this.relativeFile(f)) });
       },
-      {
-        name: 'find_path',
-        title: 'Path between two components',
-        description: 'The shortest chain of dependencies from one component to another, with the kind of each link. Also checks the reverse direction.',
-        inputSchema: { type: 'object', properties: { from: component, to: component }, required: ['from', 'to'] },
-        run: (args) => this.path(this.resolve(args.from), this.resolve(args.to)),
+      ask: async (args) => {
+        const backend = this.opts.ai;
+        if (!backend) throw new Error('AI is off. Start Eyrie with --ai (claude, codex, muse or openai) to ask questions.');
+        if (typeof args.question !== 'string' || !args.question.trim()) throw new Error('Ask a question.');
+        return answerQuestion({ mcp: this, knowledge: this.knowledge ?? null, backend, question: args.question });
       },
-      {
-        name: 'components_for_files',
-        title: 'Components for files',
-        description: 'Which architecture components own the given files, and how many components use each. Call with the files you are about to edit.',
-        inputSchema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' }, description: 'Paths relative to the repository, or absolute' } }, required: ['files'] },
-        run: (args) => {
-          // A single path is common enough from agents to accept as it is.
-          const files = Array.isArray(args.files) ? args.files.map(String) : typeof args.files === 'string' ? [args.files] : [];
-          if (!files.length) throw new Error('Give the files as a list of paths.');
-          return this.forFiles(files);
-        },
-      },
-      {
-        name: 'recent_changes',
-        title: 'Recent architecture changes',
-        description: 'What file saves changed in the architecture since this server started: components and links added or removed. Call after editing to check nothing unintended moved. Pass `since` (a seq from an earlier call) for only newer changes.',
-        inputSchema: { type: 'object', properties: { since: { type: 'number', description: 'Only changes after this seq' } } },
-        run: (args) => {
-          const since = Number(args.since) || 0;
-          const changes = this.changes.filter((c) => c.seq > since && (c.componentsAdded.length || c.componentsRemoved.length || c.componentsChanged.length || c.linksAdded.length || c.linksRemoved.length || c.files.length));
-          return { latestSeq: this.opts.engine.seq, changes };
-        },
-      },
-      {
-        name: 'record_intent',
-        title: 'Record task intent',
-        description:
-          'Tell Eyrie what you are working on: call with the task when you start, and again with done (and a summary) when you end. Eyrie keeps the session — task, agent, time, and the components your edits changed — so the user sees the why behind recent work.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task: { type: 'string', description: 'What you are about to do. Starts a session; ends any session of yours still open.' },
-            summary: { type: 'string', description: 'What you did. Ends the open session when given with done.' },
-            done: { type: 'boolean', description: 'End the open session.' },
-          },
-          required: [],
-        },
-        annotations: { readOnlyHint: false, idempotentHint: false },
-        run: async (args) => {
-          const knowledge = this.knowledge;
-          if (!knowledge) throw new Error('Sessions need the knowledge store, which this server was started without.');
-          const agent = agentOfClient(this.clientName ?? 'unknown');
-          if (args.done === true) return this.endIntent(knowledge.store, agent, typeof args.summary === 'string' ? args.summary : null);
-          const task = typeof args.task === 'string' ? args.task.trim() : '';
-          if (!task) throw new Error('Give the task you are starting, or end the open session with done.');
-          if (task.length > 500) throw new Error('Keep the task to 500 characters.');
-          return this.startIntent(knowledge.store, agent, task);
-        },
-      },
-      {
-        name: 'commit_history',
-        title: 'Commit history',
-        description:
-          'Recent commits Eyrie recorded, newest first, with the components each touched and the coding agent that co-authored it. Includes an AI note per commit (intent, whether the change matches its message, risk) when the user turned notes on. Filter by component or agent, or pass a hash for one commit in full.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            limit: { type: 'number', description: 'Most commits (default 10)' },
-            component: { ...component, description: 'Only commits that touched this component' },
-            agent: { type: 'string', description: 'Only commits co-authored by this agent, e.g. Claude or Codex' },
-            hash: { type: 'string', description: 'One commit, by full or abbreviated hash' },
-          },
-        },
-        run: (args) => this.commits(args),
-      },
-      {
-        name: 'check',
-        title: 'Health check',
-        description:
-          'Security and health findings from the architecture graph: hardcoded secrets, secrets in public env vars, exposed .env files, tables without row-level security, test-mode rules, routes that reach a write with no auth guard, server env read in UI code, and webhooks without verification. Pass the files you changed to limit the findings to them; without files, the whole project is checked.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            files: { type: 'array', items: { type: 'string' }, description: 'Paths relative to the repository, or absolute. Omit to check everything.' },
-          },
-          required: [],
-        },
-        run: async (args) => {
-          const files = Array.isArray(args.files) ? args.files.map(String) : typeof args.files === 'string' ? [args.files] : undefined;
-          return runHealthCheck(this.opts.engine, { onlyFiles: files?.map((f) => this.relativeFile(f)) });
-        },
-      },
-      {
-        name: 'ask',
-        title: 'Ask the map',
-        description:
-          'Ask a question about the architecture in plain language ("where does checkout write?", "what uses the cart service?"). A model answers by calling the read-only tools above; every component it names comes back from a tool call. Runs a model, so prefer the direct tools for single facts.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            question: { type: 'string', description: 'The question, in plain language' },
-          },
-          required: ['question'],
-        },
-        annotations: { readOnlyHint: false, idempotentHint: false },
-        run: async (args) => {
-          const backend = this.opts.ai;
-          if (!backend) throw new Error('AI is off. Start Eyrie with --ai (claude, codex, muse or openai) to ask questions.');
-          if (typeof args.question !== 'string' || !args.question.trim()) throw new Error('Ask a question.');
-          return answerQuestion({ mcp: this, knowledge: this.knowledge ?? null, backend, question: args.question });
-        },
-      },
-    ];
+    };
+    return TOOL_SPECS.map((spec) => ({ ...spec, run: run[spec.name]! }));
   }
 
   private overview() {
@@ -614,9 +625,20 @@ export class EyrieMcp {
   }
 }
 
+/** What serveStdio talks to: one project's EyrieMcp, or a McpWorkspace in front of several. */
+export interface McpHandler {
+  handle(message: unknown): Promise<unknown>;
+  /** Called once with a function that sends a message to the client, for requests the server makes (roots/list). */
+  connect?(send: (message: unknown) => void): void;
+}
+
+/** A response from the client to a request of ours: it has an id and a result or error, and no method. */
+const isResponse = (m: unknown) => !!m && typeof m === 'object' && !Array.isArray(m) && !('method' in m) && 'id' in m && ('result' in m || 'error' in m);
+
 /** Serves MCP over stdio until stdin closes. */
-export function serveStdio(mcp: EyrieMcp, input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout): Promise<void> {
+export function serveStdio(mcp: McpHandler, input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout): Promise<void> {
   const write = (msg: unknown) => output.write(`${JSON.stringify(msg)}\n`);
+  mcp.connect?.(write);
   const lines = createInterface({ input, crlfDelay: Infinity });
   let pending = Promise.resolve();
   lines.on('line', (line) => {
@@ -626,6 +648,12 @@ export function serveStdio(mcp: EyrieMcp, input: NodeJS.ReadableStream = process
       message = JSON.parse(line);
     } catch {
       write({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+      return;
+    }
+    // A response to our own request is taken at once: a tool call queued
+    // ahead of it may be the very thing waiting for it.
+    if (isResponse(message)) {
+      void mcp.handle(message);
       return;
     }
     // Answer in order; a batch (older protocol revisions) gets an array back.
