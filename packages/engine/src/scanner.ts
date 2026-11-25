@@ -38,6 +38,11 @@ export function isConfigFile(rel: string): boolean {
   return CONFIG_FILES.test(rel);
 }
 
+/** `.gitignore` and `.eyrieignore`, at any depth. */
+export function isIgnoreFile(rel: string): boolean {
+  return /(^|\/)\.(git|eyrie)ignore$/.test(rel);
+}
+
 export function isSourceFile(rel: string): boolean {
   return !IGNORED_FILES.test(rel) && detectLanguage(rel) !== null;
 }

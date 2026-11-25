@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +76,51 @@ describe('GraphEngine', () => {
     expect(b.files).toEqual([{ file: 'src/services/shipping.service.ts', change: 'unlink' }]);
     expect(b.architecture.removedNodes).toHaveLength(1);
   }, 60_000); // three updates in a row, each allowed nextBatch's wait
+
+  it('follows .eyrieignore edits without a restart', async () => {
+    engine = new GraphEngine({ root: dir, dataDir, watch: true, debounceMs: 30 });
+    await engine.start();
+    expect(engine.index.files.has('src/lib/summary.ts')).toBe(true);
+
+    let batch = nextBatch(engine);
+    writeFileSync(join(dir, '.eyrieignore'), 'src/lib/summary.ts\n');
+    let b = await batch;
+    expect(b.files).toEqual([{ file: 'src/lib/summary.ts', change: 'unlink' }]);
+    expect(engine.index.files.has('src/lib/summary.ts')).toBe(false);
+    expect(engine.isIgnored('src/lib/summary.ts')).toBe(true);
+
+    batch = nextBatch(engine);
+    unlinkSync(join(dir, '.eyrieignore'));
+    b = await batch;
+    expect(b.files).toEqual([{ file: 'src/lib/summary.ts', change: 'add' }]);
+    expect(engine.index.files.has('src/lib/summary.ts')).toBe(true);
+  }, 60_000);
+
+  it('keeps nested ignore rules when the root .gitignore changes, and watches folders a rule no longer hides', async () => {
+    writeFileSync(join(dir, '.gitignore'), 'drafts/\n');
+    mkdirSync(join(dir, 'drafts'));
+    writeFileSync(join(dir, 'drafts/idea.ts'), 'export const idea = 1;\n');
+    writeFileSync(join(dir, 'src/lib/.gitignore'), '*.gen.ts\n');
+    writeFileSync(join(dir, 'src/lib/client.gen.ts'), 'export const generated = 1;\n');
+    engine = new GraphEngine({ root: dir, dataDir, watch: true, debounceMs: 30 });
+    await engine.start();
+    expect(engine.index.files.has('src/lib/client.gen.ts')).toBe(false);
+    expect(engine.index.files.has('drafts/idea.ts')).toBe(false);
+
+    // Un-ignoring drafts/ brings its file in; the nested *.gen.ts rule still holds.
+    let batch = nextBatch(engine);
+    writeFileSync(join(dir, '.gitignore'), 'coverage/\n');
+    let b = await batch;
+    expect(b.files).toEqual([{ file: 'drafts/idea.ts', change: 'add' }]);
+    expect(engine.isIgnored('src/lib/client.gen.ts')).toBe(true);
+    expect(engine.index.files.has('src/lib/client.gen.ts')).toBe(false);
+
+    // drafts/ was never watched before the rule changed; it is now.
+    batch = nextBatch(engine);
+    writeFileSync(join(dir, 'drafts/plan.ts'), 'export const plan = 2;\n');
+    b = await batch;
+    expect(b.files).toEqual([{ file: 'drafts/plan.ts', change: 'add' }]);
+  }, 60_000);
 
   it('reuses cached facts on restart', async () => {
     const logs: string[] = [];
