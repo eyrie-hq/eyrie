@@ -61,6 +61,40 @@ function unquote(n: Node): string {
   return t;
 }
 
+/** `import('./x')`: the specifier of a dynamic import call, or null. */
+function dynamicImportSource(n: Node | null): string | null {
+  if (n?.type !== 'call_expression' || n.childForFieldName('function')?.type !== 'import') return null;
+  const first = n.childForFieldName('arguments')?.namedChildren[0];
+  return first && (first.type === 'string' || first.type === 'template_string') ? unquote(first) : null;
+}
+
+/**
+ * The names a binding pattern takes from a module: `m` is the whole module
+ * (`import * as m`), `{ a, b: c }` takes `a` and `b` (as `c`).
+ */
+function moduleBindings(pattern: Node | null): ImportSpecifier[] {
+  if (pattern?.type === 'identifier') return [{ imported: '*', local: pattern.text }];
+  if (pattern?.type !== 'object_pattern') return [];
+  const specifiers: ImportSpecifier[] = [];
+  for (const p of pattern.namedChildren) {
+    if (p?.type === 'shorthand_property_identifier_pattern') specifiers.push({ imported: p.text, local: p.text });
+    else if (p?.type === 'pair_pattern') {
+      const k = p.childForFieldName('key')?.text;
+      const v = p.childForFieldName('value')?.text;
+      if (k && v) specifiers.push({ imported: k, local: v });
+    }
+  }
+  return specifiers;
+}
+
+/** The first parameter's binding pattern of an arrow or function expression. */
+function firstParameter(fn: Node): Node | null {
+  const single = fn.childForFieldName('parameter');
+  if (single) return single;
+  const p = fn.childForFieldName('parameters')?.namedChildren[0] ?? null;
+  return p && (p.type === 'required_parameter' || p.type === 'optional_parameter') ? p.childForFieldName('pattern') : p;
+}
+
 function templateText(n: Node): string {
   return n.text.slice(1, -1).replace(/\$\{[^}]*\}/g, ':param');
 }
@@ -562,20 +596,13 @@ export class TypeScriptExtractor {
       const nameNode = d.childForFieldName('name');
       const value = d.childForFieldName('value');
       if (!nameNode) continue;
+      // `const m = await import('./x')` / `const { a } = await import('./x')`: an import binding, not a variable.
+      if (this.dynamicImportBinding(nameNode, value, d)) continue;
       if (nameNode.type !== 'identifier') {
         // Destructuring: `const { a, b } = require('./x')`
         const req = value ? this.requireSource(unwrap(value)) : null;
         if (req && nameNode.type === 'object_pattern') {
-          const specifiers: ImportSpecifier[] = [];
-          for (const p of nameNode.namedChildren) {
-            if (p?.type === 'shorthand_property_identifier_pattern') specifiers.push({ imported: p.text, local: p.text });
-            else if (p?.type === 'pair_pattern') {
-              const k = p.childForFieldName('key')?.text;
-              const v = p.childForFieldName('value')?.text;
-              if (k && v) specifiers.push({ imported: k, local: v });
-            }
-          }
-          this.facts.imports.push({ source: req, line: line(d), typeOnly: false, specifiers });
+          this.facts.imports.push({ source: req, line: line(d), typeOnly: false, specifiers: moduleBindings(nameNode) });
         } else if (value) this.walk(value);
         continue;
       }
@@ -753,10 +780,30 @@ export class TypeScriptExtractor {
     else this.walk(a);
   }
 
+  /**
+   * Records `pattern = await import('./x')` as the import it is: the whole
+   * module for an identifier, named imports for an object pattern. Returns
+   * false when `value` is not a dynamic import.
+   */
+  private dynamicImportBinding(pattern: Node | null, value: Node | null, at: Node): boolean {
+    const source = dynamicImportSource(value ? unwrap(value) : null);
+    if (source === null) return false;
+    this.facts.imports.push({ source, line: line(at), typeOnly: false, specifiers: moduleBindings(pattern), dynamic: true });
+    return true;
+  }
+
   private callExpression(node: Node): void {
     const fn = node.childForFieldName('function');
     const args = node.childForFieldName('arguments');
     if (!fn) return;
+    // `import('./x').then((m) => m.run())`: the callback's parameter is the module.
+    if (fn.type === 'member_expression' && fn.childForFieldName('property')?.text === 'then') {
+      const callback = args?.namedChildren[0];
+      if (callback && isFunctionNode(unwrap(callback)) && this.dynamicImportBinding(firstParameter(unwrap(callback)), fn.childForFieldName('object'), node)) {
+        for (const a of args!.namedChildren) if (a) this.argument(a);
+        return;
+      }
+    }
     if (fn.type === 'import') {
       const first = args?.namedChildren[0];
       if (first && (first.type === 'string' || first.type === 'template_string')) {
@@ -824,6 +871,7 @@ export class TypeScriptExtractor {
       if (d?.type !== 'variable_declarator') continue;
       const nameNode = d.childForFieldName('name');
       const value = d.childForFieldName('value');
+      if (this.dynamicImportBinding(nameNode, value, d)) continue;
       if (nameNode?.type === 'identifier' && locals) {
         const v = value ? unwrap(value) : null;
         const t = typeRoot(d.childForFieldName('type'));

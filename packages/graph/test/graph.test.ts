@@ -194,3 +194,44 @@ describe('import edges merged from several statements', () => {
     expect(e.line).toBe(1);
   });
 });
+
+describe('calls through dynamic imports', () => {
+  const B = `export function make(): number { return 1; }\nexport default function fallback(): number { return 0; }\n`;
+  /** The `CALLS` edges from symbols in src/a.ts, as `caller -> file#callee`. */
+  const callsFrom = async (a: string) => {
+    const index = await memoryIndex({ 'src/a.ts': a, 'src/b.ts': B });
+    const s = index.store;
+    return [...s.edges()]
+      .filter((e) => e.kind === 'CALLS' && s.getNode(e.source)?.file === 'src/a.ts')
+      .map((e) => `${s.getNode(e.source)!.qualifiedName} -> ${s.getNode(e.target)!.file}#${s.getNode(e.target)!.qualifiedName}`)
+      .sort();
+  };
+
+  it('resolves a namespace bound inside a function', async () => {
+    expect(await callsFrom(`export async function load() { const m = await import('./b'); return m.make(); }\n`)).toEqual(['load -> src/b.ts#make']);
+  });
+
+  it('resolves a namespace bound at module scope, not the local variable', async () => {
+    expect(await callsFrom(`const mod = await import('./b');\nexport function load() { return mod.make(); }\n`)).toEqual(['load -> src/b.ts#make']);
+  });
+
+  it('resolves destructured names, inside a function and at module scope', async () => {
+    expect(await callsFrom(`export async function load() { const { make: build } = await import('./b'); return build(); }\n`)).toEqual(['load -> src/b.ts#make']);
+    expect(await callsFrom(`const { make } = await import('./b');\nexport function load() { return make(); }\n`)).toEqual(['load -> src/b.ts#make']);
+  });
+
+  it('resolves the module passed to then()', async () => {
+    expect(await callsFrom(`export function load() { return import('./b').then((m) => m.make()); }\n`)).toEqual(['load -> src/b.ts#make']);
+    expect(await callsFrom(`export function load() { return import('./b').then(({ make }) => make()); }\n`)).toEqual(['load -> src/b.ts#make']);
+  });
+
+  it('keeps the default export for lazy component wrappers', async () => {
+    const index = await memoryIndex({
+      'src/a.tsx': `import dynamic from 'next/dynamic';\nconst Chart = dynamic(() => import('./b'));\nexport function Page() { return <Chart />; }\n`,
+      'src/b.tsx': `export default function Chart() { return <div />; }\n`,
+    });
+    const s = index.store;
+    const uses = [...s.edges()].filter((e) => s.getNode(e.source)?.file === 'src/a.tsx' && s.getNode(e.target)?.file === 'src/b.tsx' && e.kind !== 'IMPORTS');
+    expect(uses.map((e) => `${e.kind} ${s.getNode(e.target)!.qualifiedName}`)).toEqual(['USES Chart']);
+  });
+});
