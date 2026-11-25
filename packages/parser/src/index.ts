@@ -19,6 +19,7 @@ import { SwiftExtractor } from './swift.js';
 import { RustExtractor } from './rust.js';
 import { extractSecurity } from './security.js';
 import { TypeScriptExtractor } from './typescript.js';
+import { extractAstro } from './astro.js';
 import { extractVue } from './vue.js';
 
 export { SOURCE_EXTENSIONS, detectLanguage, grammarFiles } from './languages.js';
@@ -120,6 +121,7 @@ export class SourceParser {
     if (!language || shouldSkipSource(source)) return null;
     if (language === 'prisma') return extractPrisma(path, source, contentHash(source));
     if (language === 'vue') return extractVue(path, source, contentHash(source));
+    if (language === 'astro') return extractAstro(path, source, contentHash(source));
     return this.adapter.extract(path, source, language);
   }
 

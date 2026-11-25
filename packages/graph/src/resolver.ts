@@ -39,7 +39,7 @@ export type Resolution =
   /** `local` = relative or aliased; it may resolve once the file exists. */
   | { kind: 'unresolved'; local: boolean };
 
-const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
+const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue', '.astro'];
 const ASSET = /\.(json|css|scss|sass|less|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|md|mdx|txt|html|wasm|graphql|gql|yaml|yml)$/i;
 
 const LANGUAGE_BY_EXT: Record<string, SourceLanguage> = {

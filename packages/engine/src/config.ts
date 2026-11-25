@@ -10,6 +10,7 @@ const FRAMEWORK_DEPS: Record<string, string> = {
   next: 'next',
   react: 'react',
   vue: 'vue',
+  astro: 'astro',
   svelte: 'svelte',
   express: 'express',
   fastify: 'fastify',

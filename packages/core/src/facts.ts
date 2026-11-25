@@ -24,6 +24,7 @@ export type SourceLanguage =
   | 'cpp'
   | 'dart'
   | 'vue'
+  | 'astro'
   | 'objc'
   | 'lua'
   | 'prisma';

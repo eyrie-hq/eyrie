@@ -15,7 +15,7 @@ function wasmRequire(): NodeRequire {
 }
 const require = { resolve: (id: string): string => wasmRequire().resolve(id) };
 
-type GrammarLanguage = Exclude<SourceLanguage, 'prisma' | 'vue'>;
+type GrammarLanguage = Exclude<SourceLanguage, 'prisma' | 'vue' | 'astro'>;
 
 const GRAMMARS: Record<GrammarLanguage, string> = {
   typescript: 'tree-sitter-typescript/tree-sitter-typescript.wasm',
@@ -72,6 +72,7 @@ const EXTENSIONS: Record<string, SourceLanguage> = {
   '.m': 'objc',
   '.lua': 'lua',
   '.vue': 'vue',
+  '.astro': 'astro',
   '.prisma': 'prisma',
 };
 

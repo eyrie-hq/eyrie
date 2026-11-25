@@ -63,10 +63,10 @@ describe('architecture beyond JavaScript', () => {
   });
 
   it('recognises test files in the new languages', () => {
-    for (const p of ['a/OrderServiceTest.kt', 'a/OrderSpec.kts', 'a/OrderTests.swift', 'tests/t.c', 'a/test_order.c', 'a/order_test.cpp', 'a/x_test.h', 'a/OrderTest.cpp', 'a/order_test.dart', 'a/Order.spec.vue', 'a/OrderTests.m', 'a/test_order.lua', 'a/order_spec.lua']) {
+    for (const p of ['a/OrderServiceTest.kt', 'a/OrderSpec.kts', 'a/OrderTests.swift', 'tests/t.c', 'a/test_order.c', 'a/order_test.cpp', 'a/x_test.h', 'a/OrderTest.cpp', 'a/order_test.dart', 'a/Order.spec.vue', 'a/Card.test.astro', 'a/OrderTests.m', 'a/test_order.lua', 'a/order_spec.lua']) {
       expect(isTestFile(p)).toBe(true);
     }
-    for (const p of ['a/Order.kt', 'a/app.kts', 'a/Order.swift', 'a/order.c', 'a/order.h', 'a/order.cpp', 'a/order.hpp', 'a/order.dart', 'a/Order.vue', 'a/Order.m', 'a/order.lua']) {
+    for (const p of ['a/Order.kt', 'a/app.kts', 'a/Order.swift', 'a/order.c', 'a/order.h', 'a/order.cpp', 'a/order.hpp', 'a/order.dart', 'a/Order.vue', 'a/Card.astro', 'a/Order.m', 'a/order.lua']) {
       expect(isTestFile(p)).toBe(false);
     }
   });

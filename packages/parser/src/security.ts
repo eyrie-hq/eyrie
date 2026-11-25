@@ -85,7 +85,7 @@ function fromReferences(facts: FileFacts): { env: EnvReadFact[]; webhooks: Webho
 }
 
 const MEMBER_ENV: { languages: SourceLanguage[]; pattern: RegExp }[] = [
-  { languages: ['typescript', 'tsx', 'javascript', 'jsx', 'vue'], pattern: /\bprocess\.env\.([A-Za-z_]\w*)|\bprocess\.env\[['"]([^'"]+)['"]\]|\bimport\.meta\.env\.([A-Za-z_]\w*)/g },
+  { languages: ['typescript', 'tsx', 'javascript', 'jsx', 'vue', 'astro'], pattern: /\bprocess\.env\.([A-Za-z_]\w*)|\bprocess\.env\[['"]([^'"]+)['"]\]|\bimport\.meta\.env\.([A-Za-z_]\w*)/g },
   { languages: ['python'], pattern: /\bos\.environ\[['"]([^'"]+)['"]\]|\bos\.environ\.get\(\s*['"]([^'"]+)['"]/g },
   { languages: ['php'], pattern: /\$_(?:ENV|SERVER)\[['"]([^'"]+)['"]/g },
   { languages: ['ruby'], pattern: /\bENV\[['"]?([^'"\]\s]+)['"]?\]/g },
@@ -126,7 +126,7 @@ const GUARD_PATTERNS: { kind: string; pattern: RegExp }[] = [
 
 function stripLine(line: string, language: SourceLanguage, block: { open: boolean }): string {
   let out = line;
-  const cLike = language === 'typescript' || language === 'tsx' || language === 'javascript' || language === 'jsx' || language === 'go' || language === 'java' || language === 'rust' || language === 'csharp' || language === 'php' || language === 'kotlin' || language === 'swift' || language === 'c' || language === 'cpp' || language === 'dart' || language === 'vue' || language === 'objc';
+  const cLike = language === 'typescript' || language === 'tsx' || language === 'javascript' || language === 'jsx' || language === 'go' || language === 'java' || language === 'rust' || language === 'csharp' || language === 'php' || language === 'kotlin' || language === 'swift' || language === 'c' || language === 'cpp' || language === 'dart' || language === 'vue' || language === 'astro' || language === 'objc';
   if (cLike) {
     if (block.open) {
       const end = out.indexOf('*/');
