@@ -132,6 +132,41 @@ describe('external services by URL', () => {
   });
 });
 
+// Plain-object tables inherit `toString`, `constructor`, `hasOwnProperty` … from
+// Object.prototype; a name from user code must never pick one of those up.
+describe('names that Object.prototype also has', () => {
+  it('indexes a module-level call chain ending in toString() on an imported binding', async () => {
+    const index = await memoryIndex({
+      'src/a.ts': `import * as fs from 'fs';
+export const text = fs.readFileSync('a.txt').toString();
+export const hex = fs.readFileSync('b.bin').valueOf();
+`,
+    });
+    const kinds = [...index.store.nodes()].filter((n) => n.file === 'src/a.ts' && n.kind !== 'file').map((n) => `${n.kind}:${n.name}`);
+    expect(kinds.sort()).toEqual(['variable:hex', 'variable:text']);
+  });
+
+  it('resolves a call to a local named hasOwnProperty without crashing', async () => {
+    const index = await memoryIndex({
+      'src/has.ts': `const hasOwnProperty = Object.prototype.hasOwnProperty;
+export function has(o: object, k: string): boolean {
+  const seen = new Map();
+  seen.set(k, 1);
+  return hasOwnProperty.call(o, k) && toString() !== '';
+}
+`,
+    });
+    expect(index.files.has('src/has.ts')).toBe(true);
+  });
+
+  it('knows no external service or framework by a prototype name', async () => {
+    const { providerForPackage, providerForUrl } = await import('../src/index.js');
+    expect(providerForPackage('constructor')).toBeNull();
+    expect(providerForPackage('toString')).toBeNull();
+    expect(providerForUrl('https://constructor/v1')).toMatchObject({ id: 'host:constructor', label: 'constructor' });
+  });
+});
+
 describe('HTTP calls in a monorepo with several Next.js apps', () => {
   const files = {
     'apps/admin/src/app/api/products/route.ts': `export async function POST() { return Response.json({}); }`,

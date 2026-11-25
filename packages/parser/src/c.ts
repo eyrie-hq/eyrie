@@ -12,7 +12,7 @@
  * code as written, not one configuration of it.
  */
 import type { Node } from 'web-tree-sitter';
-import type { ArgFact, FieldFact, ImportFact, ModelFact, SourceLanguage, SymbolFact, SymbolKind } from '@eyrie/core';
+import { ownValue, type ArgFact, type FieldFact, type ImportFact, type ModelFact, type SourceLanguage, type SymbolFact, type SymbolKind } from '@eyrie/core';
 import { BaseExtractor, joinRoute, line } from './base.js';
 
 const MAX_CHAIN = 6;
@@ -736,7 +736,7 @@ export class CExtractor extends BaseExtractor {
    */
   protected httpRegistrar(callee: string[], args: Node[], node: Node): boolean {
     const last = callee[callee.length - 1]!;
-    const framework = HTTP_REGISTRARS[last];
+    const framework = ownValue(HTTP_REGISTRARS, last);
     if (!framework || args.length < 3) return false;
     const path = stringValue(args[1]);
     if (path === null) return false;

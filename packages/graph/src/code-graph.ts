@@ -4,6 +4,7 @@ import {
   hash53,
   idFor,
   keys,
+  ownValue,
   type ArgFact,
   type CodeDiff,
   type CodeEdge,
@@ -497,7 +498,7 @@ export class GraphIndex {
     const fn = s.initCall!;
     const root = fn.split('.')[0]!;
     const fnName = fn.split('.').pop()!;
-    const pattern = TABLE_FACTORIES[fnName];
+    const pattern = ownValue(TABLE_FACTORIES, fnName);
     if (!pattern) return null;
     const binding = importBinding(facts, root);
     const fromPkg = binding ? pattern.test(binding.source) : fn === 'mongoose.model';
@@ -849,7 +850,7 @@ export class GraphIndex {
     const idx = symbolIndex(facts);
     let q = from;
     while (q) {
-      const v = idx.get(q)?.locals?.[name];
+      const v = ownValue(idx.get(q)?.locals, name);
       if (v) return v;
       const dot = q.lastIndexOf('.');
       if (dot === -1) break;

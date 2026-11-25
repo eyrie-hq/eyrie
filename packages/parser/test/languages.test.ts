@@ -178,6 +178,23 @@ describe('Kotlin adapter', () => {
     expect(f.models?.map((m) => `${m.name}:${m.orm}:${m.relations}`)).toEqual(['Orders:exposed:Customers']);
   });
 
+  it('takes no route from a call named after an Object.prototype member', async () => {
+    const f = await parse('src/shop/Routes.kt', `package shop
+
+fun Application.module() {
+    routing {
+        toString("/x") {
+            call.respond("no")
+        }
+        get("/y") {
+            call.respond("yes")
+        }
+    }
+}
+`);
+    expect(routes(f)).toEqual(['GET /y -> ']);
+  });
+
   it('records JPA entities on data classes', async () => {
     const f = await parse(
       'src/shop/order/Order.kt',

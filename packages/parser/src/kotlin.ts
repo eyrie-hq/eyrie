@@ -20,7 +20,7 @@
  * (single declarations parse correctly) with lines shifted back.
  */
 import type { Node } from 'web-tree-sitter';
-import type { ArgFact, FieldFact, ImportFact, ModelFact, SourceLanguage, SymbolFact, SymbolKind } from '@eyrie/core';
+import { ownValue, type ArgFact, type FieldFact, type ImportFact, type ModelFact, type SourceLanguage, type SymbolFact, type SymbolKind } from '@eyrie/core';
 import { BaseExtractor, joinRoute, line } from './base.js';
 
 const MAX_CHAIN = 6;
@@ -685,7 +685,7 @@ export class KotlinExtractor extends BaseExtractor {
     let jaxPath: string | undefined;
     const jaxVerbs: string[] = [];
     for (const a of anns) {
-      const verb = SPRING_VERBS[a.name];
+      const verb = ownValue(SPRING_VERBS, a.name);
       if (verb || a.name === 'RequestMapping') {
         const path = a.args ? (annotationString(a.args) ?? '') : ((a as unknown as { splitArg?: string }).splitArg ?? '');
         let methods = verb ? [verb] : [];
@@ -912,11 +912,12 @@ export class KotlinExtractor extends BaseExtractor {
     // Ktor: `get("/orders/{id}") { ... }` inside a routing block. The block
     // is required: a bare `get("...")` elsewhere is an ordinary call. The
     // handler lambda runs in the route's scope, like Express and Go handlers.
-    if (bare && KTOR_VERBS[bare] && args.length && this.ktorPrefixes.length) {
+    const ktorVerb = bare ? ownValue(KTOR_VERBS, bare) : undefined;
+    if (ktorVerb && args.length && this.ktorPrefixes.length) {
       const path = stringValue(argumentValue(args[0]!));
       if (path !== null) {
         const prefix = this.ktorPrefixes.filter(Boolean).join('');
-        const method = KTOR_VERBS[bare]!;
+        const method = ktorVerb;
         const full = joinRoute(prefix || undefined, ktorPath(path));
         const scope = `route:${method} ${full}`;
         const handlers: string[] = [];
