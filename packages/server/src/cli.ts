@@ -2,11 +2,11 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { GraphEngine } from '@eyrie/engine';
-import { createAiBackend, type ProjectKnowledge } from '@eyrie/knowledge';
+import { createAiBackend } from '@eyrie/knowledge';
 import { initAgents } from './init-agents.js';
-import { launch, openKnowledge } from './launch.js';
-import { EyrieMcp, serveStdio } from './mcp.js';
+import { launch } from './launch.js';
+import { serveStdio } from './mcp.js';
+import { McpWorkspace } from './workspace.js';
 import { VERSION } from './version.js';
 
 const HELP = `eyrie — live architecture graph for a codebase
@@ -14,6 +14,7 @@ const HELP = `eyrie — live architecture graph for a codebase
 Usage
   eyrie [path] [options]       index a repository and open its live map
   eyrie mcp [path] [options]   serve the repository to coding agents over MCP (stdio)
+  eyrie mcp --root <dir> …     serve every repository under <dir> from one process
   eyrie init-agents [path]     tell the repository's coding agents about Eyrie's MCP tools
 
 Options
@@ -33,6 +34,10 @@ Options
   --ai-model <m>   Model for --ai (default: the backend's own)
   --local          With init-agents: write CLAUDE.local.md (kept out of git)
                    instead of AGENTS.md
+  --root <dir>     With mcp: a folder whose repositories tool calls may open
+                   (repeatable). Calls pick one with their repo argument or
+                   the client's workspace roots
+  --max-repos <n>  With mcp: repositories kept indexed at once (default 4)
   -h, --help       Show this help
 
 Add Eyrie to Claude Code (other MCP clients take the same command):
@@ -55,6 +60,8 @@ async function main(): Promise<void> {
       ai: { type: 'string' },
       'ai-model': { type: 'string' },
       local: { type: 'boolean', default: false },
+      root: { type: 'string', multiple: true },
+      'max-repos': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -68,7 +75,14 @@ async function main(): Promise<void> {
     return;
   }
   const ai = createAiBackend(values.ai ?? process.env.EYRIE_AI, { model: values['ai-model'] });
-  if (positionals[0] === 'mcp') return mcp(resolve(positionals[1] ?? process.cwd()), { watch: !values['no-watch'], reset: values.reset, ai });
+  if (positionals[0] === 'mcp') {
+    const roots = (values.root ?? []).map((r) => resolve(r));
+    // `eyrie mcp` alone serves the current folder, as it always has; with --root it may serve none by default.
+    const path = positionals[1] ?? (roots.length ? undefined : process.cwd());
+    const maxRepos = values['max-repos'] === undefined ? undefined : Number(values['max-repos']);
+    if (maxRepos !== undefined && !(Number.isInteger(maxRepos) && maxRepos >= 1)) throw new Error('--max-repos takes a whole number of at least 1.');
+    return mcp({ defaultRoot: path === undefined ? undefined : resolve(path), roots, maxRepos, watch: !values['no-watch'], reset: values.reset, ai });
+  }
 
   const root = resolve(positionals[0] ?? process.cwd());
   const log = (m: string) => process.stdout.write(`[eyrie] ${m}\n`);
@@ -91,24 +105,16 @@ async function main(): Promise<void> {
 
 /**
  * MCP over stdio. The handshake is answered at once and tool calls wait for the
- * index, so a large repository does not time out the client. stdout carries
- * the protocol only; everything else goes to stderr.
+ * index, so a large repository does not time out the client. The default
+ * repository starts indexing right away; others are indexed on their first
+ * call. stdout carries the protocol only; everything else goes to stderr.
  */
-async function mcp(root: string, opts: { watch: boolean; reset: boolean; ai: ReturnType<typeof createAiBackend> }): Promise<void> {
-  const log = (m: string) => process.stderr.write(`[eyrie] ${m}\n`);
-  const engine = new GraphEngine({ root, watch: opts.watch, reset: opts.reset, log });
-  engine.on('error', (err) => log(`error: ${err.message}`));
-  let knowledge: ProjectKnowledge | undefined;
-  const ready = engine.start().then(async () => {
-    knowledge = await openKnowledge(engine, { ai: opts.ai, watch: opts.watch, log });
-    return { knowledge };
-  });
-  ready.catch((err: unknown) => log(`Could not index ${root}: ${(err as Error).message}`));
-  const server = new EyrieMcp({ engine, ready, version: VERSION, ai: opts.ai });
-  await serveStdio(server);
-  server.dispose();
-  await knowledge?.close();
-  await engine.stop();
+async function mcp(opts: { defaultRoot?: string; roots: string[]; maxRepos?: number; watch: boolean; reset: boolean; ai: ReturnType<typeof createAiBackend> }): Promise<void> {
+  const log = (m: string) => process.stderr.write(`[eyrie] ${m}
+`);
+  const workspace = new McpWorkspace({ ...opts, version: VERSION, log });
+  await serveStdio(workspace);
+  await workspace.close();
   process.exit(0);
 }
 

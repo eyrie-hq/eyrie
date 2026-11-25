@@ -146,6 +146,19 @@ codex mcp add eyrie -- eyrie mcp /path/to/your/repo
 }
 ```
 
+**Several repositories from one process.** `eyrie mcp --root ~/code` serves every repository under `~/code` (repeat `--root` for more folders), which suits an MCP gateway that starts one process for several clients. Every tool then takes an optional `repo` argument: a repository's folder name (`shop`), its path, or any path inside it. A call without `repo` uses the path given to `eyrie mcp <path>` when there is one, otherwise the client's workspace root when the client shares a single [root](https://modelcontextprotocol.io/specification/2025-06-18/client/roots); otherwise it is refused with the repositories to choose from. A repository is indexed on its first call and kept warm; `--max-repos` (default 4) closes the least recently used one beyond that, but never one with an open `record_intent` session. Only repositories inside a `--root` folder, the client's roots or the given path can be opened. `eyrie mcp <path>` keeps working as before, and its tools accept `repo` too.
+
+```json
+{
+  "mcpServers": {
+    "eyrie": {
+      "command": "eyrie",
+      "args": ["mcp", "--root", "/path/to/code"]
+    }
+  }
+}
+```
+
 In every example, replace `eyrie` with one of the other two forms above if you have not installed the command. A client started from a desktop launcher may not inherit your shell's `PATH`, so give the full path (`~/.eyrie/bin/eyrie`) if it cannot find the command; the app's Connect menu always writes the full path.
 
 Tested end to end with Claude Code and Codex; Gemini CLI, Cursor and VS Code use their standard MCP configuration and were not tested here. Windsurf, Zed and other clients take the same command and arguments in their own MCP settings.
